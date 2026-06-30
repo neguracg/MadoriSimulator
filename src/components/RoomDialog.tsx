@@ -13,7 +13,7 @@ interface Props {
 export default function RoomDialog(props: Props) {
   const [name, setName] = useState('');
   const [typeId, setTypeId] = useState(props.roomTypes[0]?.id ?? '');
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -45,13 +45,14 @@ export default function RoomDialog(props: Props) {
         </p>
         <label>
           部屋名
-          <input
+          <textarea
             ref={inputRef}
             value={name}
-            placeholder="例: 俺の部屋 / LDK / 寝室"
+            rows={1}
+            placeholder="例: 俺の部屋 / LDK / 寝室（改行可）"
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') submit();
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submit();
               if (e.key === 'Escape') props.onCancel();
             }}
           />

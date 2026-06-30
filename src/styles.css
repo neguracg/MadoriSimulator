@@ -82,6 +82,7 @@ button.danger { background: #fff; color: #e74c3c; border-color: #f3c0bb; }
 .room-label { fill: #25323d; font-size: 12px; font-weight: 700; pointer-events: none; }
 .room-label .room-sub { font-size: 10px; font-weight: 500; fill: #4b5b68; }
 .edge-len { fill: #2c3e50; font-size: 10px; font-weight: 700; pointer-events: none; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
+.edge-len-room { fill: #c0392b; }
 .pending-cell { fill: rgba(59, 130, 246, 0.28); stroke: var(--accent); stroke-width: 1; }
 .rubber { stroke-width: 1; }
 .rubber-create { fill: rgba(59, 130, 246, 0.25); stroke: var(--accent); }
@@ -98,7 +99,8 @@ button.danger { background: #fff; color: #e74c3c; border-color: #f3c0bb; }
 .panel h4, .summary h4 { margin: 0 0 10px; font-size: 13px; }
 .panel { border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
 label { display: block; margin-bottom: 10px; font-size: 12px; color: var(--muted); font-weight: 600; }
-input, select { width: 100%; margin-top: 4px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 7px; font-size: 13px; color: var(--ink); background: #fff; }
+input, select, textarea { width: 100%; margin-top: 4px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 7px; font-size: 13px; color: var(--ink); background: #fff; font-family: inherit; }
+textarea { resize: vertical; min-height: 38px; line-height: 1.35; }
 input[type="color"] { padding: 2px; height: 32px; width: 44px; cursor: pointer; }
 .color-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .muted { color: var(--muted); }
@@ -139,6 +141,13 @@ input[type="color"] { padding: 2px; height: 32px; width: 44px; cursor: pointer; 
 .type-list { display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
 .type-item { display: flex; gap: 8px; align-items: center; }
 .type-item .type-name { flex: 1; margin-top: 0; }
+
+/* share dialog */
+.qr-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 8px 0 12px; }
+.qr-wrap img { border: 1px solid var(--line); border-radius: 8px; }
+.share-url { display: flex; gap: 6px; align-items: stretch; }
+.share-url input { margin-top: 0; font-size: 12px; }
+.share-url button { padding: 7px 12px; border: 1px solid var(--accent); border-radius: 7px; white-space: nowrap; cursor: pointer; }
 
 /* file button */
 .file-btn { position: relative; overflow: hidden; display: inline-block; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; font-weight: 600; margin: 0; color: var(--ink); }

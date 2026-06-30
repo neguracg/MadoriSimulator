@@ -13,6 +13,7 @@ interface Props {
   zoom: number;
   selectedRoomId: string | null;
   pendingCells: CellKey[];
+  ghostWallCells: CellKey[]; // outer-wall cells of the OTHER floor
   onSelectRoom: (id: string | null) => void;
   onPendingChange: (cells: CellKey[]) => void;
   onExpand: (cells: CellKey[]) => void;
@@ -34,8 +35,31 @@ function rectCells(a: Pt, b: Pt): CellKey[] {
   return out;
 }
 
+/** Wrap text to fit availablePx, honouring manual line breaks. Full-width chars ≈ fs, half-width ≈ fs*0.55. */
+function wrapText(text: string, availablePx: number, fs: number): string[] {
+  const lines: string[] = [];
+  for (const raw of text.split('\n')) {
+    if (raw === '') { lines.push(''); continue; }
+    let cur = '';
+    let curW = 0;
+    for (const ch of raw) {
+      const w = ch.charCodeAt(0) > 0xff ? fs : fs * 0.55;
+      if (curW + w > availablePx && cur !== '') {
+        lines.push(cur);
+        cur = ch;
+        curW = w;
+      } else {
+        cur += ch;
+        curW += w;
+      }
+    }
+    if (cur) lines.push(cur);
+  }
+  return lines.length ? lines : [''];
+}
+
 export default function Canvas(props: Props) {
-  const { floorData, roomTypes, cellMm, wallMm, mode, cellAction, zoom, selectedRoomId, pendingCells } = props;
+  const { floorData, roomTypes, cellMm, wallMm, mode, cellAction, zoom, selectedRoomId, pendingCells, ghostWallCells } = props;
   const cell = BASE_CELL_PX * zoom;
   const pxPerMm = cell / cellMm;
   const wallPx = Math.max(2, wallMm * pxPerMm);
@@ -229,6 +253,22 @@ export default function Canvas(props: Props) {
         <rect x={0} y={0} width={W} height={H} className="canvas-bg" />
         <g>{gridLines}</g>
 
+        {/* other floor's outer wall (ghost) */}
+        {ghostWallCells.length > 0 &&
+          boundarySegments(ghostWallCells).map((s, i) => (
+            <line
+              key={`g${i}`}
+              x1={s[0] * cell}
+              y1={s[1] * cell}
+              x2={s[2] * cell}
+              y2={s[3] * cell}
+              stroke="#e67e22"
+              strokeWidth={2}
+              strokeDasharray="5 4"
+              opacity={0.7}
+            />
+          ))}
+
         {/* room fills + walls */}
         {[...floorData.rooms]
           .sort((a, b) => a.z - b.z)
@@ -245,18 +285,31 @@ export default function Canvas(props: Props) {
             }
             const n = d.cells.length || 1;
             const m2 = cellsToM2(d.cells.length, cellMm);
-            // anchor the label on the owned cell nearest the centroid so the
-            // label center always sits over this room (never the neighbour).
+            // Use the exact centroid when it lies on an owned cell (true center
+            // for rectangles); otherwise snap to the owned cell nearest it so the
+            // label never floats over the notch / a neighbouring room.
             const ccx = sx / n, ccy = sy / n;
-            let ax = ccx, ay = ccy, bestD = Infinity;
-            for (const c of d.cells) {
-              const [x, y] = parseCell(c);
-              const px = x + 0.5, py = y + 0.5;
-              const dd = (px - ccx) ** 2 + (py - ccy) ** 2;
-              if (dd < bestD) { bestD = dd; ax = px; ay = py; }
+            const owned = new Set(d.cells);
+            let ax = ccx, ay = ccy;
+            if (!owned.has(cellKey(Math.floor(ccx), Math.floor(ccy)))) {
+              let bestD = Infinity;
+              for (const c of d.cells) {
+                const [x, y] = parseCell(c);
+                const px = x + 0.5, py = y + 0.5;
+                const dd = (px - ccx) ** 2 + (py - ccy) ** 2;
+                if (dd < bestD) { bestD = dd; ax = px; ay = py; }
+              }
             }
             const cx = (ax + d.dx) * cell;
             const cy = (ay + d.dy) * cell;
+            const lbox = bbox(d.cells);
+            const labelFs = Math.min(13, Math.max(8, cell * 0.62));
+            const availPx = (lbox ? lbox.w : 1) * cell * 0.9;
+            const nameLines = wrapText(r.name || '部屋', availPx, labelFs);
+            const areaLine = `${m2.toFixed(1)}㎡ / ${m2ToJou(m2).toFixed(1)}畳`;
+            const labelLines = [...nameLines, areaLine];
+            const lineEm = 1.2;
+            const startEm = -((labelLines.length - 1) / 2) * lineEm;
             return (
               <g key={r.id} opacity={moving ? 0.7 : 1}>
                 {d.cells.map((c) => {
@@ -285,12 +338,25 @@ export default function Canvas(props: Props) {
                     strokeLinecap="square"
                   />
                 ))}
-                {cell >= 14 && d.cells.length > 0 && (
-                  <text x={cx} y={cy} className="room-label" textAnchor="middle">
-                    <tspan x={cx} dy="-0.2em">{r.name}</tspan>
-                    <tspan x={cx} dy="1.2em" className="room-sub">
-                      {m2.toFixed(1)}㎡ / {m2ToJou(m2).toFixed(1)}畳
-                    </tspan>
+                {cell >= 12 && d.cells.length > 0 && (
+                  <text
+                    x={cx}
+                    y={cy}
+                    className="room-label"
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fontSize={labelFs}
+                  >
+                    {labelLines.map((ln, i) => (
+                      <tspan
+                        key={i}
+                        x={cx}
+                        dy={`${i === 0 ? startEm : lineEm}em`}
+                        className={i === labelLines.length - 1 ? 'room-sub' : undefined}
+                      >
+                        {ln}
+                      </tspan>
+                    ))}
                   </text>
                 )}
               </g>
@@ -311,40 +377,50 @@ export default function Canvas(props: Props) {
           />
         ))}
 
-        {/* outer wall edge lengths (meters) */}
+        {/* edge lengths (meters): outer wall always; selected room when picked */}
         {cell >= 12 &&
           (() => {
-            const u = new Set<CellKey>();
-            for (const r of unionRooms) for (const c of r.cells) u.add(c);
-            const off = 13;
-            return boundaryRuns(u).map((run, i) => {
-              const lenM = ((run.to - run.from) * cellMm) / 1000;
-              const label = `${lenM.toFixed(2)}m`;
-              if (run.orient === 'H') {
-                const x = ((run.from + run.to) / 2) * cell;
-                const y = run.line * cell + (run.dir === 'N' ? -off : off);
+            const lenEls = (cellsSet: Set<CellKey>, kind: 'outer' | 'room', prefix: string) => {
+              const base = kind === 'outer' ? 13 : 11;
+              const m = kind === 'outer' ? 1 : -1; // outer = outside, room = inside
+              const cls = kind === 'outer' ? 'edge-len' : 'edge-len edge-len-room';
+              return boundaryRuns(cellsSet).map((run, i) => {
+                const lenM = ((run.to - run.from) * cellMm) / 1000;
+                const label = `${lenM.toFixed(2)}m`;
+                if (run.orient === 'H') {
+                  const x = ((run.from + run.to) / 2) * cell;
+                  const y = run.line * cell + (run.dir === 'N' ? -1 : 1) * base * m;
+                  return (
+                    <text key={`${prefix}${i}`} x={x} y={y} className={cls} textAnchor="middle" dominantBaseline="middle">
+                      {label}
+                    </text>
+                  );
+                }
+                const y = ((run.from + run.to) / 2) * cell;
+                const x = run.line * cell + (run.dir === 'W' ? -1 : 1) * base * m;
                 return (
-                  <text key={`len${i}`} x={x} y={y} className="edge-len" textAnchor="middle" dominantBaseline="middle">
+                  <text key={`${prefix}${i}`} x={x} y={y} className={cls} textAnchor="middle" dominantBaseline="middle" transform={`rotate(-90 ${x} ${y})`}>
                     {label}
                   </text>
                 );
-              }
-              const y = ((run.from + run.to) / 2) * cell;
-              const x = run.line * cell + (run.dir === 'W' ? -off : off);
-              return (
-                <text
-                  key={`len${i}`}
-                  x={x}
-                  y={y}
-                  className="edge-len"
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  transform={`rotate(-90 ${x} ${y})`}
-                >
-                  {label}
-                </text>
+              });
+            };
+            const u = new Set<CellKey>();
+            for (const r of unionRooms) for (const c of r.cells) u.add(c);
+            const roomEls = (() => {
+              if (!selectedRoom) return null;
+              const ds = displayCells(selectedRoom.id, selectedRoom.cells);
+              const rs = new Set<CellKey>(
+                ds.cells.map((c) => { const [x, y] = parseCell(c); return cellKey(x + ds.dx, y + ds.dy); }),
               );
-            });
+              return lenEls(rs, 'room', 'rlen');
+            })();
+            return (
+              <>
+                {lenEls(u, 'outer', 'len')}
+                {roomEls}
+              </>
+            );
           })()}
 
         {/* selected room dashed highlight */}

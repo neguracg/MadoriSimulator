@@ -6,10 +6,12 @@ import SummaryPanel from './components/SummaryPanel';
 import RoomDialog from './components/RoomDialog';
 import SettingsDialog from './components/SettingsDialog';
 import PlanTabs from './components/PlanTabs';
+import ShareDialog from './components/ShareDialog';
 import { cellsToM2, defaultDoc, FLOORS, m2ToJou, m2ToTsubo, uid } from './constants';
 import type { CellAction, CellKey, Doc, Mode, Room } from './types';
 import { useHistory } from './state/useHistory';
 import * as ops from './state/docOps';
+import { buildShareUrl, clearShareHash, readSharedFromHash } from './utils/share';
 
 const PROJECT_KEY = 'madori-simulator-project-v1';
 const OLD_DOC_KEY = 'madori-simulator-doc-v1';
@@ -71,10 +73,20 @@ export default function App() {
   const [zoom, setZoom] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
   const floorData = doc.floors[floor];
   const selectedRoom: Room | null = floorData.rooms.find((r) => r.id === selectedRoomId) ?? null;
+  const activePlanName = plans.find((p) => p.id === activePlanId)?.name ?? '間取り';
+
+  // outer-wall cells of the OTHER floor, shown as a ghost for alignment
+  const ghostWallCells: CellKey[] = (() => {
+    const other = floor === 1 ? 2 : 1;
+    const set = new Set<CellKey>();
+    for (const r of doc.floors[other].rooms) for (const c of r.cells) set.add(c);
+    return [...set];
+  })();
 
   // autosave the whole project (active plan mirrors current doc)
   useEffect(() => {
@@ -128,6 +140,27 @@ export default function App() {
     setModeState('edit');
     resetUi();
   };
+  const importSharedPlan = (name: string, sdoc: Doc) => {
+    const saved = presentRef.current;
+    const np = makePlan(name, sdoc);
+    setPlans((ps) => ps.map((p) => (p.id === activePlanId ? { ...p, doc: saved } : p)).concat(np));
+    reset(np.doc);
+    setActivePlanId(np.id);
+    setFloor(1);
+    setModeState('edit');
+    resetUi();
+  };
+
+  // import a plan shared via URL hash (#p=...) on first load
+  useEffect(() => {
+    const shared = readSharedFromHash();
+    if (shared) {
+      importSharedPlan(shared.name, shared.doc);
+      clearShareHash();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const renamePlan = (id: string, name: string) => setPlans((ps) => ps.map((p) => (p.id === id ? { ...p, name } : p)));
   const deletePlan = (id: string) => {
     if (plans.length <= 1) return;
@@ -231,6 +264,7 @@ export default function App() {
             <button onClick={() => setZoom((z) => Math.min(2.5, +(z + 0.2).toFixed(2)))}>＋</button>
           </div>
           <button onClick={() => setSettingsOpen(true)}>⚙ 設定</button>
+          <button onClick={() => setShareOpen(true)}>🔗 共有</button>
           <button onClick={exportJson}>エクスポート</button>
           <label className="file-btn">
             インポート
@@ -282,6 +316,7 @@ export default function App() {
             zoom={zoom}
             selectedRoomId={selectedRoomId}
             pendingCells={pendingCells}
+            ghostWallCells={ghostWallCells}
             onSelectRoom={(id) => {
               setSelectedRoomId(id);
               setPendingCells([]);
@@ -334,6 +369,14 @@ export default function App() {
           onAddType={(name) => addType(name)}
           onPatchSettings={(patch) => commit((d) => ops.updateSettings(d, patch))}
           onClose={() => setSettingsOpen(false)}
+        />
+      )}
+
+      {shareOpen && (
+        <ShareDialog
+          url={buildShareUrl(activePlanName, doc)}
+          planName={activePlanName}
+          onClose={() => setShareOpen(false)}
         />
       )}
 

@@ -40,8 +40,8 @@ export default function PropertyPanel(props: Props) {
     <div className="panel">
       <h4>プロパティ</h4>
       <label>
-        部屋名
-        <input value={room.name} onChange={(e) => props.onPatch({ name: e.target.value })} />
+        部屋名（改行可）
+        <textarea rows={1} value={room.name} onChange={(e) => props.onPatch({ name: e.target.value })} />
       </label>
       <label>
         種別
