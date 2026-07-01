@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Canvas from './components/Canvas';
 import Toolbar from './components/Toolbar';
 import PropertyPanel from './components/PropertyPanel';
@@ -10,7 +10,7 @@ import ShareDialog from './components/ShareDialog';
 import OpeningDialog from './components/OpeningDialog';
 import FurniturePanel from './components/FurniturePanel';
 import { cellsToM2, DEFAULT_FURNITURE_COLOR, defaultDoc, FLOORS, m2ToJou, m2ToTsubo, uid } from './constants';
-import type { CellAction, CellKey, Doc, Furniture, Mode, Room } from './types';
+import type { CellAction, CellKey, Doc, Furniture, Mode, Room, RoomType } from './types';
 import { useHistory } from './state/useHistory';
 import * as ops from './state/docOps';
 import { buildShareUrl, clearShareHash, readSharedFromHash } from './utils/share';
@@ -81,6 +81,12 @@ export default function App() {
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
   const [furnitureArmed, setFurnitureArmed] = useState(false);
+
+  // clipboard for copy/cut/paste — app-level so it survives floor & plan switches
+  type Clip =
+    | { kind: 'room'; room: Room; type: RoomType | null; srcFloor: number; srcPlan: string }
+    | { kind: 'furniture'; item: Furniture; srcFloor: number; srcPlan: string };
+  const clipboardRef = useRef<Clip | null>(null);
   const [menu, setMenu] = useState<{ kind: 'room' | 'opening'; id: string; x: number; y: number } | null>(null);
 
   const floorData = doc.floors[floor];
@@ -216,11 +222,52 @@ export default function App() {
           commit((d) => ops.deleteRoom(d, floor, selectedRoomId));
           setSelectedRoomId(null);
         }
+      } else if (ctrl && (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'x')) {
+        // copy / cut the selected object (room or furniture)
+        const d0 = presentRef.current;
+        const fd = d0.floors[floor];
+        const selFurn = selectedFurnitureId ? (fd.furniture ?? []).find((f) => f.id === selectedFurnitureId) : null;
+        const selRoom = selectedRoomId ? fd.rooms.find((r) => r.id === selectedRoomId) : null;
+        if (selFurn) {
+          clipboardRef.current = { kind: 'furniture', item: { ...selFurn }, srcFloor: floor, srcPlan: activePlanId };
+          e.preventDefault();
+          if (e.key.toLowerCase() === 'x') {
+            commit((d) => ops.removeFurniture(d, floor, selFurn.id));
+            setSelectedFurnitureId(null);
+          }
+        } else if (selRoom) {
+          const type = d0.roomTypes.find((t) => t.id === selRoom.typeId) ?? null;
+          clipboardRef.current = { kind: 'room', room: { ...selRoom }, type, srcFloor: floor, srcPlan: activePlanId };
+          e.preventDefault();
+          if (e.key.toLowerCase() === 'x') {
+            commit((d) => ops.deleteRoom(d, floor, selRoom.id));
+            setSelectedRoomId(null);
+          }
+        }
+      } else if (ctrl && e.key.toLowerCase() === 'v') {
+        const clip = clipboardRef.current;
+        if (!clip) return;
+        e.preventDefault();
+        const sameSpot = clip.srcFloor === floor && clip.srcPlan === activePlanId;
+        const id = uid();
+        if (clip.kind === 'furniture') {
+          const off = sameSpot ? presentRef.current.settings.cellMm : 0;
+          commit((d) => ops.pasteFurniture(d, floor, clip.item, id, off, off));
+          setSelectedRoomId(null);
+          setSelectedOpeningId(null);
+          setSelectedFurnitureId(id);
+        } else {
+          const off = sameSpot ? 1 : 0;
+          commit((d) => ops.pasteRoom(d, floor, clip.room, clip.type, id, off, off));
+          setSelectedFurnitureId(null);
+          setSelectedOpeningId(null);
+          setSelectedRoomId(id);
+        }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo, commit, floor, selectedRoomId, selectedOpeningId, selectedFurnitureId]);
+  }, [undo, redo, commit, floor, activePlanId, selectedRoomId, selectedOpeningId, selectedFurnitureId, presentRef]);
 
   const addType = (name: string): string => {
     const { doc: nd, type } = ops.addRoomType(presentRef.current, name);

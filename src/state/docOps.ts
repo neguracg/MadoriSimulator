@@ -216,6 +216,35 @@ export function removeFurniture(doc: Doc, floor: number, id: string): Doc {
   return mapFloor(doc, floor, (f) => ({ ...f, furniture: (f.furniture ?? []).filter((x) => x.id !== id) }));
 }
 
+/** Paste a copied room onto a floor with a new id (optionally offset by whole cells). */
+export function pasteRoom(
+  doc: Doc,
+  floor: number,
+  room: Room,
+  type: RoomType | null,
+  id: string,
+  dcx: number,
+  dcy: number,
+): Doc {
+  let d = doc;
+  if (type && !d.roomTypes.some((t) => t.id === type.id)) {
+    d = { ...d, roomTypes: [...d.roomTypes, type] };
+  }
+  const z = Math.max(0, ...d.floors[floor].rooms.map((r) => r.z)) + 1;
+  const cells = room.cells.map((c) => {
+    const [x, y] = c.split(',').map(Number);
+    return cellKey(x + dcx, y + dcy);
+  });
+  const nr: Room = { ...room, id, cells, z };
+  return mapFloor(d, floor, (f) => ({ ...f, rooms: [...f.rooms, nr] }));
+}
+
+/** Paste a copied furniture onto a floor with a new id (optionally offset in mm). */
+export function pasteFurniture(doc: Doc, floor: number, item: Furniture, id: string, dx: number, dy: number): Doc {
+  const nf: Furniture = { ...item, id, x: item.x + dx, y: item.y + dy };
+  return mapFloor(doc, floor, (f) => ({ ...f, furniture: [...(f.furniture ?? []), nf] }));
+}
+
 export function addRoomType(doc: Doc, name: string): { doc: Doc; type: RoomType } {
   const type: RoomType = { id: uid(), name, color: nextAutoColor(doc.roomTypes.length) };
   return { doc: { ...doc, roomTypes: [...doc.roomTypes, type] }, type };
