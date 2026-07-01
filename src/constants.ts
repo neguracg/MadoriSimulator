@@ -39,8 +39,10 @@ export const WINDOW_SIZES = [600, 900, 1200, 1650, 1690, 1800];
 export const DEFAULT_DOOR_SIZE = 800;
 export const DEFAULT_WINDOW_SIZE = 1650;
 
+export const DEFAULT_FURNITURE_COLOR = '#8a9ba8';
+
 export function emptyFloor() {
-  return { rooms: [], openings: [] };
+  return { rooms: [], openings: [], furniture: [] };
 }
 
 export function defaultDoc(): Doc {

@@ -3,6 +3,7 @@ import {
   type CellKey,
   type Doc,
   type FloorData,
+  type Furniture,
   type Opening,
   type Room,
   type RoomType,
@@ -198,6 +199,21 @@ export function patchOpening(doc: Doc, floor: number, id: string, patch: Partial
 
 export function removeOpening(doc: Doc, floor: number, id: string): Doc {
   return mapFloor(doc, floor, (f) => ({ ...f, openings: f.openings.filter((o) => o.id !== id) }));
+}
+
+export function addFurniture(doc: Doc, floor: number, item: Furniture): Doc {
+  return mapFloor(doc, floor, (f) => ({ ...f, furniture: [...(f.furniture ?? []), item] }));
+}
+
+export function patchFurniture(doc: Doc, floor: number, id: string, patch: Partial<Furniture>): Doc {
+  return mapFloor(doc, floor, (f) => ({
+    ...f,
+    furniture: (f.furniture ?? []).map((x) => (x.id === id ? { ...x, ...patch } : x)),
+  }));
+}
+
+export function removeFurniture(doc: Doc, floor: number, id: string): Doc {
+  return mapFloor(doc, floor, (f) => ({ ...f, furniture: (f.furniture ?? []).filter((x) => x.id !== id) }));
 }
 
 export function addRoomType(doc: Doc, name: string): { doc: Doc; type: RoomType } {

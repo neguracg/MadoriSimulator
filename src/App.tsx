@@ -8,8 +8,9 @@ import SettingsDialog from './components/SettingsDialog';
 import PlanTabs from './components/PlanTabs';
 import ShareDialog from './components/ShareDialog';
 import OpeningDialog from './components/OpeningDialog';
-import { cellsToM2, defaultDoc, FLOORS, m2ToJou, m2ToTsubo, uid } from './constants';
-import type { CellAction, CellKey, Doc, Mode, Room } from './types';
+import FurniturePanel from './components/FurniturePanel';
+import { cellsToM2, DEFAULT_FURNITURE_COLOR, defaultDoc, FLOORS, m2ToJou, m2ToTsubo, uid } from './constants';
+import type { CellAction, CellKey, Doc, Furniture, Mode, Room } from './types';
 import { useHistory } from './state/useHistory';
 import * as ops from './state/docOps';
 import { buildShareUrl, clearShareHash, readSharedFromHash } from './utils/share';
@@ -78,10 +79,14 @@ export default function App() {
   const [openingDialogOpen, setOpeningDialogOpen] = useState(false);
   const [placingOpening, setPlacingOpening] = useState<{ kind: 'door' | 'window'; size: number } | null>(null);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
+  const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
+  const [furnitureArmed, setFurnitureArmed] = useState(false);
   const [menu, setMenu] = useState<{ kind: 'room' | 'opening'; id: string; x: number; y: number } | null>(null);
 
   const floorData = doc.floors[floor];
+  const furnitureList = floorData.furniture ?? [];
   const selectedRoom: Room | null = floorData.rooms.find((r) => r.id === selectedRoomId) ?? null;
+  const selectedFurniture: Furniture | null = furnitureList.find((f) => f.id === selectedFurnitureId) ?? null;
   const activePlanName = plans.find((p) => p.id === activePlanId)?.name ?? '間取り';
 
   // outer-wall cells of the OTHER floor, shown as a ghost for alignment
@@ -109,9 +114,11 @@ export default function App() {
   const resetUi = () => {
     setSelectedRoomId(null);
     setSelectedOpeningId(null);
+    setSelectedFurnitureId(null);
     setPendingCells([]);
     setCellAction('none');
     setPlacingOpening(null);
+    setFurnitureArmed(false);
   };
 
   const setMode = (m: Mode) => {
@@ -197,8 +204,12 @@ export default function App() {
         setCellAction('none');
         setPendingCells([]);
         setPlacingOpening(null);
+        setFurnitureArmed(false);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selectedOpeningId) {
+        if (selectedFurnitureId) {
+          commit((d) => ops.removeFurniture(d, floor, selectedFurnitureId));
+          setSelectedFurnitureId(null);
+        } else if (selectedOpeningId) {
           commit((d) => ops.removeOpening(d, floor, selectedOpeningId));
           setSelectedOpeningId(null);
         } else if (selectedRoomId) {
@@ -209,7 +220,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo, commit, floor, selectedRoomId, selectedOpeningId]);
+  }, [undo, redo, commit, floor, selectedRoomId, selectedOpeningId, selectedFurnitureId]);
 
   const addType = (name: string): string => {
     const { doc: nd, type } = ops.addRoomType(presentRef.current, name);
@@ -309,9 +320,17 @@ export default function App() {
             cellAction={cellAction}
             setMode={setMode}
             hasPending={pendingCells.length > 0}
+            furnitureArmed={furnitureArmed}
             canUndo={canUndo}
             canRedo={canRedo}
             onCreateRoom={() => pendingCells.length > 0 && setDialogOpen(true)}
+            onArmFurniture={() => {
+              setFurnitureArmed((a) => !a);
+              setCellAction('none');
+              setPendingCells([]);
+              setSelectedRoomId(null);
+              setSelectedOpeningId(null);
+            }}
             onUndo={undo}
             onRedo={redo}
           />
@@ -332,9 +351,13 @@ export default function App() {
             openings={floorData.openings}
             placingOpening={placingOpening}
             selectedOpeningId={selectedOpeningId}
+            furniture={furnitureList}
+            selectedFurnitureId={selectedFurnitureId}
+            furnitureArmed={furnitureArmed}
             onSelectRoom={(id) => {
               setSelectedRoomId(id);
               setSelectedOpeningId(null);
+              setSelectedFurnitureId(null);
               setPendingCells([]);
               if (cellAction !== 'none' && id === null) setCellAction('none');
             }}
@@ -351,9 +374,22 @@ export default function App() {
             onPatchOpening={(id, patch) => commit((d) => ops.patchOpening(d, floor, id, patch))}
             onSelectOpening={(id) => {
               setSelectedOpeningId(id);
-              if (id) setSelectedRoomId(null);
+              if (id) { setSelectedRoomId(null); setSelectedFurnitureId(null); }
             }}
             onContextOpening={(id, x, y) => setMenu({ kind: 'opening', id, x, y })}
+            onCreateFurniture={(x, y, w, h) => {
+              const id = uid();
+              commit((d) => ops.addFurniture(d, floor, { id, name: '家具', x, y, w, h, color: DEFAULT_FURNITURE_COLOR }));
+              setFurnitureArmed(false);
+              setSelectedRoomId(null);
+              setSelectedOpeningId(null);
+              setSelectedFurnitureId(id);
+            }}
+            onSelectFurniture={(id) => {
+              setSelectedFurnitureId(id);
+              if (id) { setSelectedRoomId(null); setSelectedOpeningId(null); }
+            }}
+            onPatchFurniture={(id, patch) => commit((d) => ops.patchFurniture(d, floor, id, patch))}
           />
           {placingOpening && (
             <div className="place-banner">
@@ -365,16 +401,27 @@ export default function App() {
         </main>
 
         <aside className="right">
-          <PropertyPanel
-            room={selectedRoom}
-            roomTypes={doc.roomTypes}
-            cellMm={doc.settings.cellMm}
-            cellAction={cellAction}
-            onPatch={(patch) => selectedRoomId && commit((d) => ops.patchRoom(d, floor, selectedRoomId, patch))}
-            onAddType={addType}
-            onDelete={deleteSelected}
-            onSetCellAction={setCellAction}
-          />
+          {selectedFurniture ? (
+            <FurniturePanel
+              item={selectedFurniture}
+              onPatch={(patch) => commit((d) => ops.patchFurniture(d, floor, selectedFurniture.id, patch))}
+              onDelete={() => {
+                commit((d) => ops.removeFurniture(d, floor, selectedFurniture.id));
+                setSelectedFurnitureId(null);
+              }}
+            />
+          ) : (
+            <PropertyPanel
+              room={selectedRoom}
+              roomTypes={doc.roomTypes}
+              cellMm={doc.settings.cellMm}
+              cellAction={cellAction}
+              onPatch={(patch) => selectedRoomId && commit((d) => ops.patchRoom(d, floor, selectedRoomId, patch))}
+              onAddType={addType}
+              onDelete={deleteSelected}
+              onSetCellAction={setCellAction}
+            />
+          )}
           <SummaryPanel floors={doc.floors} currentFloor={floor} cellMm={doc.settings.cellMm} />
         </aside>
       </div>

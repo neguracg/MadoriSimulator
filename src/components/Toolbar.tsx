@@ -5,16 +5,20 @@ interface Props {
   cellAction: CellAction;
   setMode: (m: Mode) => void;
   hasPending: boolean;
+  furnitureArmed: boolean;
   canUndo: boolean;
   canRedo: boolean;
   onCreateRoom: () => void;
+  onArmFurniture: () => void;
   onUndo: () => void;
   onRedo: () => void;
 }
 
 export default function Toolbar(props: Props) {
   const hint =
-    props.mode === 'move'
+    props.furnitureArmed
+      ? 'キャンバスをドラッグして家具（四角）を作成。作成後は選択して移動・四隅でサイズ変更・右で寸法入力。'
+      : props.mode === 'move'
       ? '部屋をドラッグして移動。重なりは許容され、編集モードに戻った時点で確定（上のレイヤーが優先）。'
       : props.cellAction === 'expand'
         ? '追加するマスをドラッグ／クリックで選んでください。'
@@ -47,6 +51,14 @@ export default function Toolbar(props: Props) {
           title="選択したマスから部屋を作成"
         >
           ＋ 部屋を作成
+        </button>
+        <button
+          className={props.furnitureArmed ? 'active' : ''}
+          disabled={props.mode !== 'edit'}
+          onClick={props.onArmFurniture}
+          title="押してからキャンバスをドラッグして家具を作成"
+        >
+          🪑 家具を作成
         </button>
         <span className="sep" />
         <button disabled={!props.canUndo} onClick={props.onUndo} title="Ctrl+Z">↶ Undo</button>

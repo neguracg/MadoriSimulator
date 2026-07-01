@@ -28,9 +28,21 @@ export interface Opening {
   size: number; // mm
 }
 
+/** Free-placed rectangular object (furniture) — positioned/sized in mm, not grid-locked. */
+export interface Furniture {
+  id: string;
+  name: string;
+  x: number; // mm, top-left
+  y: number; // mm, top-left
+  w: number; // mm
+  h: number; // mm
+  color: string;
+}
+
 export interface FloorData {
   rooms: Room[];
   openings: Opening[];
+  furniture: Furniture[];
 }
 
 export interface Settings {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BASE_CELL_PX, DOOR_COLOR, GRID_H, GRID_W, WINDOW_COLOR, cellsToM2, m2ToJou } from '../constants';
-import { cellKey, parseCell, type CellAction, type CellKey, type FloorData, type Mode, type Opening, type RoomType, type Side } from '../types';
+import { cellKey, parseCell, type CellAction, type CellKey, type FloorData, type Furniture, type Mode, type Opening, type RoomType, type Side } from '../types';
 import { applyRunDrag, bbox, boundaryRuns, boundarySegments, edgeSegment, unionBoundary, type Run } from '../utils/geometry';
 
 interface Props {
@@ -17,6 +17,9 @@ interface Props {
   openings: Opening[];
   placingOpening: { kind: 'door' | 'window'; size: number } | null;
   selectedOpeningId: string | null;
+  furniture: Furniture[];
+  selectedFurnitureId: string | null;
+  furnitureArmed: boolean;
   onSelectRoom: (id: string | null) => void;
   onPendingChange: (cells: CellKey[]) => void;
   onExpand: (cells: CellKey[]) => void;
@@ -28,6 +31,9 @@ interface Props {
   onPatchOpening: (id: string, patch: { cx: number; cy: number; side: Side }) => void;
   onSelectOpening: (id: string | null) => void;
   onContextOpening: (id: string, x: number, y: number) => void;
+  onCreateFurniture: (x: number, y: number, w: number, h: number) => void;
+  onSelectFurniture: (id: string | null) => void;
+  onPatchFurniture: (id: string, patch: { x: number; y: number; w: number; h: number }) => void;
 }
 
 type Pt = { x: number; y: number };
@@ -66,7 +72,7 @@ function wrapText(text: string, availablePx: number, fs: number): string[] {
 }
 
 export default function Canvas(props: Props) {
-  const { floorData, roomTypes, cellMm, wallMm, mode, cellAction, zoom, selectedRoomId, pendingCells, ghostWallCells, openings, placingOpening, selectedOpeningId } = props;
+  const { floorData, roomTypes, cellMm, wallMm, mode, cellAction, zoom, selectedRoomId, pendingCells, ghostWallCells, openings, placingOpening, selectedOpeningId, furniture, selectedFurnitureId, furnitureArmed } = props;
   const cell = BASE_CELL_PX * zoom;
   const pxPerMm = cell / cellMm;
   const wallPx = Math.max(2, wallMm * pxPerMm);
@@ -135,8 +141,22 @@ export default function Canvas(props: Props) {
   const [placeGhost, setPlaceGhost] = useState<{ cx: number; cy: number; side: Side } | null>(null);
   const [openingDrag, setOpeningDrag] = useState<{ id: string } | null>(null);
   const [openingDragPos, setOpeningDragPos] = useState<{ cx: number; cy: number; side: Side } | null>(null);
+  // furniture (free mm-based rectangles)
+  const [furnCreate, setFurnCreate] = useState<{ sx: number; sy: number; cx: number; cy: number } | null>(null);
+  const [furnLive, setFurnLive] = useState<{ id: string; x: number; y: number; w: number; h: number } | null>(null);
+  const [furnDragging, setFurnDragging] = useState(false);
+  const furnDragRef = useRef<
+    | { kind: 'move'; id: string; startMx: number; startMy: number; origX: number; origY: number }
+    | { kind: 'resize'; id: string; fixedMx: number; fixedMy: number }
+    | null
+  >(null);
   const dragBaseCells = useRef<CellKey[]>([]);
   const movedRef = useRef(false);
+
+  const mmFromEvent = (e: { clientX: number; clientY: number }) => {
+    const { px, py } = ptFromEvent(e);
+    return { mx: px * cellMm, my: py * cellMm };
+  };
 
   const ptFromEvent = (e: { clientX: number; clientY: number }) => {
     const rect = svgRef.current!.getBoundingClientRect();
@@ -152,6 +172,13 @@ export default function Canvas(props: Props) {
       const { px, py } = ptFromEvent(e);
       const w = nearestWall(px, py);
       if (w) props.onAddOpening(placingOpening.kind, w.cx, w.cy, w.side, placingOpening.size);
+      return;
+    }
+    // arming furniture creation: drag anywhere to draw a free rectangle
+    if (furnitureArmed) {
+      const { mx, my } = mmFromEvent(e);
+      movedRef.current = false;
+      setFurnCreate({ sx: mx, sy: my, cx: mx, cy: my });
       return;
     }
     const { cx, cy } = ptFromEvent(e);
@@ -187,6 +214,12 @@ export default function Canvas(props: Props) {
       setPlaceGhost(nearestWall(px, py));
       return;
     }
+    if (furnCreate) {
+      const { mx, my } = mmFromEvent(e);
+      movedRef.current = true;
+      setFurnCreate((c) => (c ? { ...c, cx: mx, cy: my } : c));
+      return;
+    }
     if (!rubber && !moveDrag) return;
     const { cx, cy } = ptFromEvent(e);
     movedRef.current = true;
@@ -195,6 +228,15 @@ export default function Canvas(props: Props) {
   };
 
   const onPointerUp = () => {
+    if (furnCreate) {
+      const x = Math.min(furnCreate.sx, furnCreate.cx);
+      const y = Math.min(furnCreate.sy, furnCreate.cy);
+      const w = Math.abs(furnCreate.cx - furnCreate.sx);
+      const h = Math.abs(furnCreate.cy - furnCreate.sy);
+      if (w >= 80 && h >= 80) props.onCreateFurniture(x, y, w, h);
+      setFurnCreate(null);
+      return;
+    }
     if (rubber) {
       const cells = rectCells(rubber.start, rubber.cur);
       if (rubber.purpose === 'create') props.onPendingChange(cells);
@@ -279,6 +321,40 @@ export default function Canvas(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openingDrag, cell, wallEdges]);
 
+  // ---- furniture move / resize, via window listeners ----
+  useEffect(() => {
+    if (!furnDragging) return;
+    const onMove = (e: PointerEvent) => {
+      const d = furnDragRef.current;
+      if (!d) return;
+      const { mx, my } = mmFromEvent(e);
+      if (d.kind === 'move') {
+        setFurnLive((f) => (f ? { ...f, x: d.origX + (mx - d.startMx), y: d.origY + (my - d.startMy) } : f));
+      } else {
+        const x = Math.min(d.fixedMx, mx);
+        const y = Math.min(d.fixedMy, my);
+        const w = Math.max(20, Math.abs(mx - d.fixedMx));
+        const h = Math.max(20, Math.abs(my - d.fixedMy));
+        setFurnLive((f) => (f ? { ...f, x, y, w, h } : f));
+      }
+    };
+    const onUp = () => {
+      setFurnLive((f) => {
+        if (f) props.onPatchFurniture(f.id, { x: f.x, y: f.y, w: f.w, h: f.h });
+        return null;
+      });
+      furnDragRef.current = null;
+      setFurnDragging(false);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [furnDragging, cell]);
+
   // ---- render ----
   const W = GRID_W * cell;
   const H = GRID_H * cell;
@@ -321,7 +397,7 @@ export default function Canvas(props: Props) {
         ref={svgRef}
         width={W}
         height={H}
-        className={`canvas mode-${mode} act-${cellAction}${placingOpening ? ' placing' : ''}`}
+        className={`canvas mode-${mode} act-${cellAction}${placingOpening ? ' placing' : ''}${furnitureArmed ? ' arming' : ''}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -614,6 +690,90 @@ export default function Canvas(props: Props) {
           return (
             <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={Math.max(6, wallPx * 1.3)} strokeLinecap="round" opacity={0.5} />
           );
+        })()}
+
+        {/* furniture */}
+        {furniture.map((f) => {
+          const live = furnLive && furnLive.id === f.id ? furnLive : f;
+          const x = live.x * pxPerMm;
+          const y = live.y * pxPerMm;
+          const w = live.w * pxPerMm;
+          const h = live.h * pxPerMm;
+          const sel = f.id === selectedFurnitureId;
+          return (
+            <g key={f.id}>
+              <rect
+                x={x}
+                y={y}
+                width={w}
+                height={h}
+                rx={2}
+                fill={f.color}
+                fillOpacity={0.5}
+                stroke={sel ? '#333' : '#7a7a7a'}
+                strokeWidth={sel ? 2 : 1.2}
+                style={{ cursor: 'move' }}
+                onPointerDown={(e) => {
+                  if (furnitureArmed || mode !== 'edit') return;
+                  e.stopPropagation();
+                  const { mx, my } = mmFromEvent(e);
+                  props.onSelectFurniture(f.id);
+                  furnDragRef.current = { kind: 'move', id: f.id, startMx: mx, startMy: my, origX: f.x, origY: f.y };
+                  setFurnLive({ id: f.id, x: f.x, y: f.y, w: f.w, h: f.h });
+                  setFurnDragging(true);
+                }}
+              />
+              {cell >= 12 && (
+                <text x={x + w / 2} y={y + h / 2} className="furn-label" textAnchor="middle" dominantBaseline="central">
+                  {f.name}
+                </text>
+              )}
+              {sel && (() => {
+                const m = 1000;
+                const wLabel = `${(live.w / m).toFixed(2)}m`;
+                const hLabel = `${(live.h / m).toFixed(2)}m`;
+                const corners = [
+                  { cx: x, cy: y, fx: live.x + live.w, fy: live.y + live.h, cur: 'nwse-resize' },
+                  { cx: x + w, cy: y, fx: live.x, fy: live.y + live.h, cur: 'nesw-resize' },
+                  { cx: x, cy: y + h, fx: live.x + live.w, fy: live.y, cur: 'nesw-resize' },
+                  { cx: x + w, cy: y + h, fx: live.x, fy: live.y, cur: 'nwse-resize' },
+                ];
+                return (
+                  <>
+                    <text x={x + w / 2} y={y - 8} className="edge-len edge-len-furn" textAnchor="middle" dominantBaseline="middle">{wLabel}</text>
+                    <text x={x + w / 2} y={y + h + 8} className="edge-len edge-len-furn" textAnchor="middle" dominantBaseline="middle">{wLabel}</text>
+                    <text x={x - 8} y={y + h / 2} className="edge-len edge-len-furn" textAnchor="middle" dominantBaseline="middle" transform={`rotate(-90 ${x - 8} ${y + h / 2})`}>{hLabel}</text>
+                    <text x={x + w + 8} y={y + h / 2} className="edge-len edge-len-furn" textAnchor="middle" dominantBaseline="middle" transform={`rotate(-90 ${x + w + 8} ${y + h / 2})`}>{hLabel}</text>
+                    {corners.map((c, i) => (
+                      <circle
+                        key={i}
+                        cx={c.cx}
+                        cy={c.cy}
+                        r={7}
+                        className="corner-handle"
+                        style={{ cursor: c.cur }}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          furnDragRef.current = { kind: 'resize', id: f.id, fixedMx: c.fx, fixedMy: c.fy };
+                          setFurnLive({ id: f.id, x: f.x, y: f.y, w: f.w, h: f.h });
+                          setFurnDragging(true);
+                        }}
+                      />
+                    ))}
+                  </>
+                );
+              })()}
+            </g>
+          );
+        })}
+
+        {/* furniture create preview */}
+        {furnCreate && (() => {
+          const x = Math.min(furnCreate.sx, furnCreate.cx) * pxPerMm;
+          const y = Math.min(furnCreate.sy, furnCreate.cy) * pxPerMm;
+          const w = Math.abs(furnCreate.cx - furnCreate.sx) * pxPerMm;
+          const h = Math.abs(furnCreate.cy - furnCreate.sy) * pxPerMm;
+          return <rect x={x} y={y} width={w} height={h} className="furn-preview" />;
         })()}
 
         {/* edge handles */}
