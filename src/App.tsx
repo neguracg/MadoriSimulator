@@ -7,6 +7,7 @@ import RoomDialog from './components/RoomDialog';
 import SettingsDialog from './components/SettingsDialog';
 import PlanTabs from './components/PlanTabs';
 import ShareDialog from './components/ShareDialog';
+import OpeningDialog from './components/OpeningDialog';
 import { cellsToM2, defaultDoc, FLOORS, m2ToJou, m2ToTsubo, uid } from './constants';
 import type { CellAction, CellKey, Doc, Mode, Room } from './types';
 import { useHistory } from './state/useHistory';
@@ -74,7 +75,10 @@ export default function App() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [openingDialogOpen, setOpeningDialogOpen] = useState(false);
+  const [placingOpening, setPlacingOpening] = useState<{ kind: 'door' | 'window'; size: number } | null>(null);
+  const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ kind: 'room' | 'opening'; id: string; x: number; y: number } | null>(null);
 
   const floorData = doc.floors[floor];
   const selectedRoom: Room | null = floorData.rooms.find((r) => r.id === selectedRoomId) ?? null;
@@ -104,8 +108,10 @@ export default function App() {
 
   const resetUi = () => {
     setSelectedRoomId(null);
+    setSelectedOpeningId(null);
     setPendingCells([]);
     setCellAction('none');
+    setPlacingOpening(null);
   };
 
   const setMode = (m: Mode) => {
@@ -190,14 +196,20 @@ export default function App() {
       } else if (e.key === 'Escape') {
         setCellAction('none');
         setPendingCells([]);
-      } else if (e.key === 'Delete' && selectedRoomId) {
-        commit((d) => ops.deleteRoom(d, floor, selectedRoomId));
-        setSelectedRoomId(null);
+        setPlacingOpening(null);
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedOpeningId) {
+          commit((d) => ops.removeOpening(d, floor, selectedOpeningId));
+          setSelectedOpeningId(null);
+        } else if (selectedRoomId) {
+          commit((d) => ops.deleteRoom(d, floor, selectedRoomId));
+          setSelectedRoomId(null);
+        }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo, commit, floor, selectedRoomId]);
+  }, [undo, redo, commit, floor, selectedRoomId, selectedOpeningId]);
 
   const addType = (name: string): string => {
     const { doc: nd, type } = ops.addRoomType(presentRef.current, name);
@@ -317,8 +329,12 @@ export default function App() {
             selectedRoomId={selectedRoomId}
             pendingCells={pendingCells}
             ghostWallCells={ghostWallCells}
+            openings={floorData.openings}
+            placingOpening={placingOpening}
+            selectedOpeningId={selectedOpeningId}
             onSelectRoom={(id) => {
               setSelectedRoomId(id);
+              setSelectedOpeningId(null);
               setPendingCells([]);
               if (cellAction !== 'none' && id === null) setCellAction('none');
             }}
@@ -327,8 +343,25 @@ export default function App() {
             onShrink={(cells) => selectedRoomId && commit((d) => ops.shrinkRoom(d, floor, selectedRoomId, cells))}
             onTranslate={(roomId, dx, dy) => commit((d) => ops.translateRoom(d, floor, roomId, dx, dy))}
             onSetShape={(roomId, cells) => commit((d) => ops.setRoomShape(d, floor, roomId, cells))}
-            onContextRoom={(id, x, y) => setMenu({ id, x, y })}
+            onContextRoom={(id, x, y) => setMenu({ kind: 'room', id, x, y })}
+            onAddOpening={(kind, cx, cy, side, size) => {
+              commit((d) => ops.addOpening(d, floor, kind, cx, cy, side, size));
+              setPlacingOpening(null);
+            }}
+            onPatchOpening={(id, patch) => commit((d) => ops.patchOpening(d, floor, id, patch))}
+            onSelectOpening={(id) => {
+              setSelectedOpeningId(id);
+              if (id) setSelectedRoomId(null);
+            }}
+            onContextOpening={(id, x, y) => setMenu({ kind: 'opening', id, x, y })}
           />
+          {placingOpening && (
+            <div className="place-banner">
+              {placingOpening.kind === 'door' ? 'ドア' : '窓'}（{placingOpening.size}mm）をどこに配置しますか？
+              壁の上でクリックで確定・Escで中止
+              <button onClick={() => setPlacingOpening(null)}>中止</button>
+            </div>
+          )}
         </main>
 
         <aside className="right">
@@ -384,14 +417,49 @@ export default function App() {
         <>
           <div className="menu-layer" onClick={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }} />
           <div className="context-menu" style={{ left: menu.x, top: menu.y }}>
-            <button onClick={() => { commit((d) => ops.reorderRoom(d, floor, menu.id, 'front')); setMenu(null); }}>前面へ</button>
-            <button onClick={() => { commit((d) => ops.reorderRoom(d, floor, menu.id, 'forward')); setMenu(null); }}>1つ前へ</button>
-            <button onClick={() => { commit((d) => ops.reorderRoom(d, floor, menu.id, 'backward')); setMenu(null); }}>1つ後ろへ</button>
-            <button onClick={() => { commit((d) => ops.reorderRoom(d, floor, menu.id, 'back')); setMenu(null); }}>背面へ</button>
-            <hr />
-            <button className="danger" onClick={() => { commit((d) => ops.deleteRoom(d, floor, menu.id)); if (selectedRoomId === menu.id) setSelectedRoomId(null); setMenu(null); }}>削除</button>
+            {menu.kind === 'room' ? (
+              <>
+                <button onClick={() => { setOpeningDialogOpen(true); setMenu(null); }}>🚪 ドア／窓を追加</button>
+                <hr />
+                <button onClick={() => { commit((d) => ops.reorderRoom(d, floor, menu.id, 'front')); setMenu(null); }}>前面へ</button>
+                <button onClick={() => { commit((d) => ops.reorderRoom(d, floor, menu.id, 'forward')); setMenu(null); }}>1つ前へ</button>
+                <button onClick={() => { commit((d) => ops.reorderRoom(d, floor, menu.id, 'backward')); setMenu(null); }}>1つ後ろへ</button>
+                <button onClick={() => { commit((d) => ops.reorderRoom(d, floor, menu.id, 'back')); setMenu(null); }}>背面へ</button>
+                <hr />
+                <button className="danger" onClick={() => { commit((d) => ops.deleteRoom(d, floor, menu.id)); if (selectedRoomId === menu.id) setSelectedRoomId(null); setMenu(null); }}>削除</button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => {
+                  const cur = floorData.openings.find((o) => o.id === menu.id);
+                  const v = window.prompt('幅 (mm) を入力', String(cur?.size ?? 800));
+                  const n = Number(v);
+                  if (v && n >= 100) commit((d) => ops.patchOpening(d, floor, menu.id, { size: n }));
+                  setMenu(null);
+                }}>幅を変更…</button>
+                <button onClick={() => {
+                  const cur = floorData.openings.find((o) => o.id === menu.id);
+                  if (cur) commit((d) => ops.patchOpening(d, floor, menu.id, { kind: cur.kind === 'door' ? 'window' : 'door' }));
+                  setMenu(null);
+                }}>ドア⇄窓を切替</button>
+                <hr />
+                <button className="danger" onClick={() => { commit((d) => ops.removeOpening(d, floor, menu.id)); if (selectedOpeningId === menu.id) setSelectedOpeningId(null); setMenu(null); }}>削除</button>
+              </>
+            )}
           </div>
         </>
+      )}
+
+      {openingDialogOpen && (
+        <OpeningDialog
+          onCancel={() => setOpeningDialogOpen(false)}
+          onConfirm={(kind, size) => {
+            setPlacingOpening({ kind, size });
+            setOpeningDialogOpen(false);
+            setSelectedRoomId(null);
+            setSelectedOpeningId(null);
+          }}
+        />
       )}
     </div>
   );

@@ -183,8 +183,9 @@ export function addOpening(
   cx: number,
   cy: number,
   side: Side,
+  size: number,
 ): Doc {
-  const op: Opening = { id: uid(), kind, cx, cy, side, size: kind === 'door' ? 800 : 1200 };
+  const op: Opening = { id: uid(), kind, cx, cy, side, size };
   return mapFloor(doc, floor, (f) => ({ ...f, openings: [...f.openings, op] }));
 }
 

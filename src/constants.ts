@@ -31,6 +31,14 @@ export function nextAutoColor(usedCount: number): string {
   return AUTO_PALETTE[usedCount % AUTO_PALETTE.length];
 }
 
+// door / window default colors and common widths (mm)
+export const DOOR_COLOR = '#c0392b';
+export const WINDOW_COLOR = '#2e86de';
+export const DOOR_SIZES = [600, 700, 750, 800, 900, 1200];
+export const WINDOW_SIZES = [600, 900, 1200, 1650, 1690, 1800];
+export const DEFAULT_DOOR_SIZE = 800;
+export const DEFAULT_WINDOW_SIZE = 1650;
+
 export function emptyFloor() {
   return { rooms: [], openings: [] };
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BASE_CELL_PX, GRID_H, GRID_W, cellsToM2, m2ToJou } from '../constants';
-import { cellKey, parseCell, type CellAction, type CellKey, type FloorData, type Mode, type RoomType } from '../types';
-import { applyRunDrag, bbox, boundaryRuns, boundarySegments, unionBoundary, type Run } from '../utils/geometry';
+import { BASE_CELL_PX, DOOR_COLOR, GRID_H, GRID_W, WINDOW_COLOR, cellsToM2, m2ToJou } from '../constants';
+import { cellKey, parseCell, type CellAction, type CellKey, type FloorData, type Mode, type Opening, type RoomType, type Side } from '../types';
+import { applyRunDrag, bbox, boundaryRuns, boundarySegments, edgeSegment, unionBoundary, type Run } from '../utils/geometry';
 
 interface Props {
   floorData: FloorData;
@@ -14,6 +14,9 @@ interface Props {
   selectedRoomId: string | null;
   pendingCells: CellKey[];
   ghostWallCells: CellKey[]; // outer-wall cells of the OTHER floor
+  openings: Opening[];
+  placingOpening: { kind: 'door' | 'window'; size: number } | null;
+  selectedOpeningId: string | null;
   onSelectRoom: (id: string | null) => void;
   onPendingChange: (cells: CellKey[]) => void;
   onExpand: (cells: CellKey[]) => void;
@@ -21,6 +24,10 @@ interface Props {
   onTranslate: (roomId: string, dx: number, dy: number) => void;
   onSetShape: (roomId: string, cells: CellKey[]) => void;
   onContextRoom: (roomId: string, x: number, y: number) => void;
+  onAddOpening: (kind: 'door' | 'window', cx: number, cy: number, side: Side, size: number) => void;
+  onPatchOpening: (id: string, patch: { cx: number; cy: number; side: Side }) => void;
+  onSelectOpening: (id: string | null) => void;
+  onContextOpening: (id: string, x: number, y: number) => void;
 }
 
 type Pt = { x: number; y: number };
@@ -59,7 +66,7 @@ function wrapText(text: string, availablePx: number, fs: number): string[] {
 }
 
 export default function Canvas(props: Props) {
-  const { floorData, roomTypes, cellMm, wallMm, mode, cellAction, zoom, selectedRoomId, pendingCells, ghostWallCells } = props;
+  const { floorData, roomTypes, cellMm, wallMm, mode, cellAction, zoom, selectedRoomId, pendingCells, ghostWallCells, openings, placingOpening, selectedOpeningId } = props;
   const cell = BASE_CELL_PX * zoom;
   const pxPerMm = cell / cellMm;
   const wallPx = Math.max(2, wallMm * pxPerMm);
@@ -81,6 +88,43 @@ export default function Canvas(props: Props) {
 
   const selectedRoom = floorData.rooms.find((r) => r.id === selectedRoomId) ?? null;
 
+  // wall edges (for snapping doors/windows) — one entry per physical wall segment
+  type WallEdge = { cx: number; cy: number; side: Side; mx: number; my: number };
+  const wallEdges = useMemo<WallEdge[]>(() => {
+    const seen = new Set<string>();
+    const list: WallEdge[] = [];
+    for (const r of floorData.rooms) {
+      const set = new Set(r.cells);
+      for (const c of r.cells) {
+        const [x, y] = parseCell(c);
+        const cand: [Side, number, number, string, number, number][] = [
+          ['N', x, y - 1, `h,${x},${y}`, x + 0.5, y],
+          ['S', x, y + 1, `h,${x},${y + 1}`, x + 0.5, y + 1],
+          ['W', x - 1, y, `v,${x},${y}`, x, y + 0.5],
+          ['E', x + 1, y, `v,${x + 1},${y}`, x + 1, y + 0.5],
+        ];
+        for (const [side, nx, ny, skey, mx, my] of cand) {
+          if (!set.has(cellKey(nx, ny)) && !seen.has(skey)) {
+            seen.add(skey);
+            list.push({ cx: x, cy: y, side, mx, my });
+          }
+        }
+      }
+    }
+    return list;
+  }, [floorData.rooms]);
+
+  // find nearest wall segment for door/window snapping
+  const nearestWall = (px: number, py: number): WallEdge | null => {
+    let best: WallEdge | null = null;
+    let bd = Infinity;
+    for (const w of wallEdges) {
+      const d = (w.mx - px) ** 2 + (w.my - py) ** 2;
+      if (d < bd) { bd = d; best = w; }
+    }
+    return best;
+  };
+
   // ---- drag state ----
   const [rubber, setRubber] = useState<{ start: Pt; cur: Pt; purpose: 'create' | 'expand' | 'shrink' } | null>(null);
   const [moveDrag, setMoveDrag] = useState<{ roomId: string; start: Pt; cur: Pt } | null>(null);
@@ -88,6 +132,9 @@ export default function Canvas(props: Props) {
     ({ kind: 'edge'; run: Run } | { kind: 'corner'; ax: number; ay: number }) | null
   >(null);
   const [handlePreview, setHandlePreview] = useState<CellKey[] | null>(null);
+  const [placeGhost, setPlaceGhost] = useState<{ cx: number; cy: number; side: Side } | null>(null);
+  const [openingDrag, setOpeningDrag] = useState<{ id: string } | null>(null);
+  const [openingDragPos, setOpeningDragPos] = useState<{ cx: number; cy: number; side: Side } | null>(null);
   const dragBaseCells = useRef<CellKey[]>([]);
   const movedRef = useRef(false);
 
@@ -100,11 +147,19 @@ export default function Canvas(props: Props) {
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0 || handleDrag) return;
+    // placing a door/window: click confirms position on the nearest wall
+    if (placingOpening) {
+      const { px, py } = ptFromEvent(e);
+      const w = nearestWall(px, py);
+      if (w) props.onAddOpening(placingOpening.kind, w.cx, w.cy, w.side, placingOpening.size);
+      return;
+    }
     const { cx, cy } = ptFromEvent(e);
     if (cx < 0 || cy < 0 || cx >= GRID_W || cy >= GRID_H) return;
     movedRef.current = false;
     const owner = cellOwner.get(cellKey(cx, cy));
     (e.target as Element).setPointerCapture?.(e.pointerId);
+    props.onSelectOpening(null);
 
     if (mode === 'move') {
       if (owner) {
@@ -127,6 +182,11 @@ export default function Canvas(props: Props) {
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
+    if (placingOpening) {
+      const { px, py } = ptFromEvent(e);
+      setPlaceGhost(nearestWall(px, py));
+      return;
+    }
     if (!rubber && !moveDrag) return;
     const { cx, cy } = ptFromEvent(e);
     movedRef.current = true;
@@ -195,6 +255,30 @@ export default function Canvas(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleDrag, cell]);
 
+  // ---- door/window drag, via window listeners ----
+  useEffect(() => {
+    if (!openingDrag) return;
+    const onMove = (e: PointerEvent) => {
+      const { px, py } = ptFromEvent(e);
+      const w = nearestWall(px, py);
+      if (w) setOpeningDragPos({ cx: w.cx, cy: w.cy, side: w.side });
+    };
+    const onUp = () => {
+      setOpeningDragPos((pos) => {
+        if (pos && openingDrag) props.onPatchOpening(openingDrag.id, pos);
+        return null;
+      });
+      setOpeningDrag(null);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openingDrag, cell, wallEdges]);
+
   // ---- render ----
   const W = GRID_W * cell;
   const H = GRID_H * cell;
@@ -237,7 +321,7 @@ export default function Canvas(props: Props) {
         ref={svgRef}
         width={W}
         height={H}
-        className={`canvas mode-${mode} act-${cellAction}`}
+        className={`canvas mode-${mode} act-${cellAction}${placingOpening ? ' placing' : ''}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -452,6 +536,85 @@ export default function Canvas(props: Props) {
               <rect key={`rb${c}`} x={x * cell} y={y * cell} width={cell} height={cell} className={`rubber rubber-${rubber.purpose}`} />
             );
           })}
+
+        {/* doors / windows */}
+        {openings.map((o) => {
+          const live = openingDrag?.id === o.id && openingDragPos ? { ...o, ...openingDragPos } : o;
+          const seg = edgeSegment(live.cx, live.cy, live.side);
+          const horiz = live.side === 'N' || live.side === 'S';
+          const mx = ((seg[0] + seg[2]) / 2) * cell;
+          const my = ((seg[1] + seg[3]) / 2) * cell;
+          const lenPx = Math.min(cell * 3.2, Math.max(cell * 0.5, o.size * pxPerMm));
+          const color = o.kind === 'door' ? DOOR_COLOR : WINDOW_COLOR;
+          const barW = o.kind === 'door' ? Math.max(6, wallPx * 1.3) : Math.max(4, wallPx * 0.8);
+          const x1 = horiz ? mx - lenPx / 2 : mx;
+          const y1 = horiz ? my : my - lenPx / 2;
+          const x2 = horiz ? mx + lenPx / 2 : mx;
+          const y2 = horiz ? my : my + lenPx / 2;
+          const sel = o.id === selectedOpeningId;
+          return (
+            <g key={o.id} className="opening" style={{ cursor: 'grab' }}>
+              <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#fff" strokeWidth={wallPx + 3} strokeLinecap="butt" />
+              <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={barW} strokeLinecap="round" />
+              {o.kind === 'window' && (
+                <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#fff" strokeWidth={Math.max(1, barW * 0.34)} strokeLinecap="butt" />
+              )}
+              {sel && (
+                <rect
+                  x={Math.min(x1, x2) - 5}
+                  y={Math.min(y1, y2) - 5}
+                  width={Math.abs(x2 - x1) + 10}
+                  height={Math.abs(y2 - y1) + 10}
+                  fill="none"
+                  stroke="#111"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                  rx={3}
+                />
+              )}
+              {/* wide invisible hit area */}
+              <line
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+                stroke="transparent"
+                strokeWidth={16}
+                strokeLinecap="round"
+                onPointerDown={(e) => {
+                  if (placingOpening) return;
+                  e.stopPropagation();
+                  props.onSelectOpening(o.id);
+                  setOpeningDragPos(null);
+                  setOpeningDrag({ id: o.id });
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  props.onSelectOpening(o.id);
+                  props.onContextOpening(o.id, e.clientX, e.clientY);
+                }}
+              />
+            </g>
+          );
+        })}
+
+        {/* placement ghost */}
+        {placingOpening && placeGhost && (() => {
+          const seg = edgeSegment(placeGhost.cx, placeGhost.cy, placeGhost.side);
+          const horiz = placeGhost.side === 'N' || placeGhost.side === 'S';
+          const mx = ((seg[0] + seg[2]) / 2) * cell;
+          const my = ((seg[1] + seg[3]) / 2) * cell;
+          const lenPx = Math.min(cell * 3.2, Math.max(cell * 0.5, placingOpening.size * pxPerMm));
+          const color = placingOpening.kind === 'door' ? DOOR_COLOR : WINDOW_COLOR;
+          const x1 = horiz ? mx - lenPx / 2 : mx;
+          const y1 = horiz ? my : my - lenPx / 2;
+          const x2 = horiz ? mx + lenPx / 2 : mx;
+          const y2 = horiz ? my : my + lenPx / 2;
+          return (
+            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={Math.max(6, wallPx * 1.3)} strokeLinecap="round" opacity={0.5} />
+          );
+        })()}
 
         {/* edge handles */}
         {showHandles &&
