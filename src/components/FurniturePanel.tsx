@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { Furniture } from '../types';
 
 interface Props {
@@ -6,7 +7,33 @@ interface Props {
   onDelete: () => void;
 }
 
+const MIN_MM = 20;
+
 export default function FurniturePanel({ item, onPatch, onDelete }: Props) {
+  // Local string state so the field can be freely edited (emptied, partial, etc.)
+  // and only committed when it parses to a valid size.
+  const [wStr, setWStr] = useState(String(Math.round(item.w)));
+  const [hStr, setHStr] = useState(String(Math.round(item.h)));
+
+  // sync when the item changes externally (drag/resize, or selecting another item)
+  useEffect(() => setWStr(String(Math.round(item.w))), [item.id, item.w]);
+  useEffect(() => setHStr(String(Math.round(item.h))), [item.id, item.h]);
+
+  const handle = (
+    raw: string,
+    setLocal: (s: string) => void,
+    key: 'w' | 'h',
+  ) => {
+    setLocal(raw); // always let the user type (including empty)
+    const n = Number(raw);
+    if (raw.trim() !== '' && Number.isFinite(n) && n >= MIN_MM) onPatch({ [key]: n });
+  };
+
+  const blur = (raw: string, setLocal: (s: string) => void, current: number) => {
+    const n = Number(raw);
+    if (raw.trim() === '' || !Number.isFinite(n) || n < MIN_MM) setLocal(String(Math.round(current)));
+  };
+
   return (
     <div className="panel">
       <h4>家具</h4>
@@ -18,19 +45,21 @@ export default function FurniturePanel({ item, onPatch, onDelete }: Props) {
         <label>
           幅 (mm)
           <input
-            type="number"
-            min={20}
-            value={Math.round(item.w)}
-            onChange={(e) => onPatch({ w: Math.max(20, Number(e.target.value) || 0) })}
+            type="text"
+            inputMode="numeric"
+            value={wStr}
+            onChange={(e) => handle(e.target.value, setWStr, 'w')}
+            onBlur={() => blur(wStr, setWStr, item.w)}
           />
         </label>
         <label>
           奥行 (mm)
           <input
-            type="number"
-            min={20}
-            value={Math.round(item.h)}
-            onChange={(e) => onPatch({ h: Math.max(20, Number(e.target.value) || 0) })}
+            type="text"
+            inputMode="numeric"
+            value={hStr}
+            onChange={(e) => handle(e.target.value, setHStr, 'h')}
+            onBlur={() => blur(hStr, setHStr, item.h)}
           />
         </label>
       </div>

@@ -150,6 +150,7 @@ export default function Canvas(props: Props) {
     | { kind: 'resize'; id: string; fixedMx: number; fixedMy: number }
     | null
   >(null);
+  const furnMovedRef = useRef(false);
   const dragBaseCells = useRef<CellKey[]>([]);
   const movedRef = useRef(false);
 
@@ -327,6 +328,7 @@ export default function Canvas(props: Props) {
     const onMove = (e: PointerEvent) => {
       const d = furnDragRef.current;
       if (!d) return;
+      furnMovedRef.current = true;
       const { mx, my } = mmFromEvent(e);
       if (d.kind === 'move') {
         setFurnLive((f) => (f ? { ...f, x: d.origX + (mx - d.startMx), y: d.origY + (my - d.startMy) } : f));
@@ -340,10 +342,11 @@ export default function Canvas(props: Props) {
     };
     const onUp = () => {
       setFurnLive((f) => {
-        if (f) props.onPatchFurniture(f.id, { x: f.x, y: f.y, w: f.w, h: f.h });
+        if (f && furnMovedRef.current) props.onPatchFurniture(f.id, { x: f.x, y: f.y, w: f.w, h: f.h });
         return null;
       });
       furnDragRef.current = null;
+      furnMovedRef.current = false;
       setFurnDragging(false);
     };
     window.addEventListener('pointermove', onMove);
@@ -718,6 +721,7 @@ export default function Canvas(props: Props) {
                   e.stopPropagation();
                   const { mx, my } = mmFromEvent(e);
                   props.onSelectFurniture(f.id);
+                  furnMovedRef.current = false;
                   furnDragRef.current = { kind: 'move', id: f.id, startMx: mx, startMy: my, origX: f.x, origY: f.y };
                   setFurnLive({ id: f.id, x: f.x, y: f.y, w: f.w, h: f.h });
                   setFurnDragging(true);
@@ -754,6 +758,7 @@ export default function Canvas(props: Props) {
                         style={{ cursor: c.cur }}
                         onPointerDown={(e) => {
                           e.stopPropagation();
+                          furnMovedRef.current = false;
                           furnDragRef.current = { kind: 'resize', id: f.id, fixedMx: c.fx, fixedMy: c.fy };
                           setFurnLive({ id: f.id, x: f.x, y: f.y, w: f.w, h: f.h });
                           setFurnDragging(true);
