@@ -191,3 +191,13 @@ export function edgeSegment(cx: number, cy: number, side: Side): Segment {
     case 'E': return [cx + 1, cy, cx + 1, cy + 1];
   }
 }
+
+/** The cell adjacent to (cx,cy) across the given side (used for wall-hosted openings). */
+export function neighborCell(cx: number, cy: number, side: Side): [number, number] {
+  switch (side) {
+    case 'N': return [cx, cy - 1];
+    case 'S': return [cx, cy + 1];
+    case 'W': return [cx - 1, cy];
+    case 'E': return [cx + 1, cy];
+  }
+}

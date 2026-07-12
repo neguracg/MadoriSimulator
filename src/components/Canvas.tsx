@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BASE_CELL_PX, DOOR_COLOR, GRID_H, GRID_W, WINDOW_COLOR, cellsToM2, m2ToJou } from '../constants';
 import { cellKey, parseCell, type CellAction, type CellKey, type FloorData, type Furniture, type Mode, type Opening, type RoomType, type Side } from '../types';
-import { applyRunDrag, bbox, boundaryRuns, boundarySegments, edgeSegment, unionBoundary, type Run } from '../utils/geometry';
+import { applyRunDrag, bbox, boundaryRuns, boundarySegments, edgeSegment, neighborCell, unionBoundary, type Run } from '../utils/geometry';
 
 interface Props {
   floorData: FloorData;
@@ -376,6 +376,36 @@ export default function Canvas(props: Props) {
 
   const moveOffset = moveDrag ? { dx: moveDrag.cur.x - moveDrag.start.x, dy: moveDrag.cur.y - moveDrag.start.y } : null;
 
+  // openings / furniture linked to the room currently being move-dragged, so the
+  // preview can offset them the same way translateRoom will on drop. Judgement
+  // mirrors docOps.translateRoom, using the (not-yet-moved) floorData + cellOwner.
+  const linkedOpeningIds = (() => {
+    if (!moveDrag) return null;
+    const R = moveDrag.roomId;
+    const ids = new Set<string>();
+    for (const o of openings) {
+      const a = cellOwner.get(cellKey(o.cx, o.cy)) ?? null;
+      const [nx, ny] = neighborCell(o.cx, o.cy, o.side);
+      const b = cellOwner.get(cellKey(nx, ny)) ?? null;
+      if ((a === R || b === R) && (a === R || a === null) && (b === R || b === null)) ids.add(o.id);
+    }
+    return ids;
+  })();
+
+  const linkedFurnitureIds = (() => {
+    if (!moveDrag) return null;
+    const room = floorData.rooms.find((r) => r.id === moveDrag.roomId);
+    if (!room) return null;
+    const cellSet = new Set(room.cells);
+    const ids = new Set<string>();
+    for (const item of furniture) {
+      const ccx = Math.floor((item.x + item.w / 2) / cellMm);
+      const ccy = Math.floor((item.y + item.h / 2) / cellMm);
+      if (cellSet.has(cellKey(ccx, ccy))) ids.add(item.id);
+    }
+    return ids;
+  })();
+
   // displayed cells per room (apply move offset / handle preview)
   const displayCells = (roomId: string, cells: CellKey[]): { cells: CellKey[]; dx: number; dy: number } => {
     if (handlePreview && roomId === selectedRoomId) return { cells: handlePreview, dx: 0, dy: 0 };
@@ -621,8 +651,9 @@ export default function Canvas(props: Props) {
           const live = openingDrag?.id === o.id && openingDragPos ? { ...o, ...openingDragPos } : o;
           const seg = edgeSegment(live.cx, live.cy, live.side);
           const horiz = live.side === 'N' || live.side === 'S';
-          const mx = ((seg[0] + seg[2]) / 2) * cell;
-          const my = ((seg[1] + seg[3]) / 2) * cell;
+          const moving = !!(moveOffset && linkedOpeningIds?.has(o.id));
+          const mx = ((seg[0] + seg[2]) / 2) * cell + (moving ? moveOffset!.dx * cell : 0);
+          const my = ((seg[1] + seg[3]) / 2) * cell + (moving ? moveOffset!.dy * cell : 0);
           const lenPx = Math.min(cell * 3.2, Math.max(cell * 0.5, o.size * pxPerMm));
           const color = o.kind === 'door' ? DOOR_COLOR : WINDOW_COLOR;
           const barW = o.kind === 'door' ? Math.max(6, wallPx * 1.3) : Math.max(4, wallPx * 0.8);
@@ -632,7 +663,7 @@ export default function Canvas(props: Props) {
           const y2 = horiz ? my : my + lenPx / 2;
           const sel = o.id === selectedOpeningId;
           return (
-            <g key={o.id} className="opening" style={{ cursor: 'grab' }}>
+            <g key={o.id} className="opening" style={{ cursor: 'grab' }} opacity={moving ? 0.7 : 1}>
               <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#fff" strokeWidth={wallPx + 3} strokeLinecap="butt" />
               <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={barW} strokeLinecap="round" />
               {o.kind === 'window' && (
@@ -698,13 +729,14 @@ export default function Canvas(props: Props) {
         {/* furniture */}
         {furniture.map((f) => {
           const live = furnLive && furnLive.id === f.id ? furnLive : f;
-          const x = live.x * pxPerMm;
-          const y = live.y * pxPerMm;
+          const moving = !!(moveOffset && linkedFurnitureIds?.has(f.id));
+          const x = live.x * pxPerMm + (moving ? moveOffset!.dx * cell : 0);
+          const y = live.y * pxPerMm + (moving ? moveOffset!.dy * cell : 0);
           const w = live.w * pxPerMm;
           const h = live.h * pxPerMm;
           const sel = f.id === selectedFurnitureId;
           return (
-            <g key={f.id}>
+            <g key={f.id} opacity={moving ? 0.7 : 1}>
               <rect
                 x={x}
                 y={y}
