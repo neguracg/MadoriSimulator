@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GRID_H, GRID_W } from '../constants';
 import type { Room } from '../types';
-import { applyRunDrag, boundaryRuns, cellOwnerMap, clampRoomDelta, inGrid } from './geometry';
+import { applyRunDrag, boundaryRuns, cellOwnerMap, clampRoomDelta, inGrid, occupiedCellCount } from './geometry';
 
 const room = (id: string, z: number, cells: string[]): Room => ({ id, name: id, typeId: 'living', cells, z });
 
@@ -93,5 +93,13 @@ describe('inGrid / applyRunDrag のグリッド端', () => {
     const cells = ['2,5', '3,5'];
     const top = boundaryRuns(cells).find((r) => r.dir === 'N')!;
     expect(applyRunDrag(cells, top, 9).sort()).toEqual(['2,0', '2,1', '2,2', '2,3', '2,4', '2,5', '3,0', '3,1', '3,2', '3,3', '3,4', '3,5']);
+  });
+});
+
+describe('occupiedCellCount', () => {
+  it('部屋のマスの数。2つの部屋が取り合う（重なった）マスは1つと数える', () => {
+    const room = (id: string, cells: string[]) => ({ id, name: id, typeId: 'x', cells, z: 1 });
+    expect(occupiedCellCount({ rooms: [], openings: [], furniture: [] })).toBe(0);
+    expect(occupiedCellCount({ rooms: [room('a', ['0,0', '1,0']), room('b', ['1,0', '2,0'])], openings: [], furniture: [] })).toBe(3);
   });
 });

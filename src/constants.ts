@@ -1,4 +1,4 @@
-import type { Doc, RoomType } from './types';
+import type { Doc, Room, RoomType } from './types';
 
 export const TATAMI_M2 = 1.62; // 不動産表示規約: 1畳 = 1.62m²
 export const TSUBO_M2 = 3.305785; // 1坪
@@ -69,6 +69,11 @@ export function defaultDoc(): Doc {
 
 export const uid = (): string =>
   (crypto?.randomUUID?.() ?? `id-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
+/** The colour a room is drawn in: its own override, else the colour of its type (grey when the type is gone). One rule for the canvas, the property panel and the printout. */
+export function roomColor(room: Room, types: RoomType[]): string {
+  return room.colorOverride ?? types.find((t) => t.id === room.typeId)?.color ?? '#bbbbbb';
+}
 
 /** Area helpers (input: number of cells, cell size in mm). */
 export function cellsToM2(cells: number, cellMm: number): number {

@@ -208,10 +208,12 @@ class Ui:
             n += 1
         return n
 
-    def make_room(self, x0, y0, x1, y1, name="R", wait_saved=True):
+    def make_room(self, x0, y0, x1, y1, name="R", wait_saved=True, type_name=None):
         self.drag(self.pt(x0, y0), self.pt(x1, y1))
         self.page.locator("button", has_text="部屋を作成").first.click()
         self.page.locator(".modal textarea").fill(name)
+        if type_name:
+            self.page.locator(".modal select").select_option(label=type_name)
         self.page.locator(".modal button.primary").click()
         if wait_saved:
             self.wait_until(lambda: any(r["name"] == name for r in self.floor()["rooms"]), f"部屋 {name} の保存")
@@ -311,6 +313,30 @@ def lz_compress(text):
     r = subprocess.run(["node", "-e", code], input=text.encode("utf-8"), cwd=ROOT, capture_output=True)
     check_infra(r.returncode == 0, "node で lz-string を呼べません: " + r.stderr.decode("utf-8", "replace")[:200])
     return r.stdout.decode("utf-8")
+
+
+def count_color(png, rgb, tol=4):
+    """How many pixels of a PNG (path or bytes) are within `tol` of `rgb` in every channel."""
+    try:
+        import io
+
+        import numpy
+        from PIL import Image
+    except ImportError as e:
+        raise InfraError("画面の色の検査には pillow と numpy が要ります: " + str(e))
+    im = Image.open(io.BytesIO(png) if isinstance(png, (bytes, bytearray)) else png).convert("RGB")
+    arr = numpy.asarray(im).astype(int)
+    return int((abs(arr - numpy.array(rgb)).max(axis=2) <= tol).sum())
+
+
+def pdf_pages(pdf_bytes, dpi=110):
+    """(page texts, page PNGs as bytes) of a PDF, rendered by PyMuPDF."""
+    try:
+        import fitz
+    except ImportError as e:
+        raise InfraError("PDF の検査には pymupdf が要ります: " + str(e))
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    return [p.get_text() for p in doc], [p.get_pixmap(dpi=dpi).tobytes("png") for p in doc]
 
 
 def cell_xy(c):

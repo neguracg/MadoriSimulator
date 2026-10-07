@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Canvas from './components/Canvas';
 import Toolbar from './components/Toolbar';
 import PropertyPanel from './components/PropertyPanel';
@@ -10,6 +10,7 @@ import ShareDialog from './components/ShareDialog';
 import OpeningDialog from './components/OpeningDialog';
 import FurniturePanel from './components/FurniturePanel';
 import FileMenu from './components/FileMenu';
+import PrintSheet from './components/PrintSheet';
 import { useAutosave } from './hooks/useAutosave';
 import { useFitView } from './hooks/useFitView';
 import { useNotice } from './hooks/useNotice';
@@ -83,6 +84,8 @@ export default function App() {
   const selectedFurniture: Furniture | null = furnitureList.find((f) => f.id === selectedFurnitureId) ?? null;
   const activePlanName = plans.find((p) => p.id === activePlanId)?.name ?? '間取り';
 
+  // What is printed: the plan as it is, with move mode's overlaps settled (rooms that overlap would be counted twice in the list).
+  const printDoc = useMemo(() => (mode === 'move' ? ops.resolveOverlaps(doc, floor) : doc), [doc, mode, floor]);
   const fitAll = useFitView(centerRef, floorData, doc.settings.cellMm, zoom, setZoom);
   const panning = useTwoFingerPan(centerRef); // two fingers scroll the canvas (one finger is for drawing)
 
@@ -334,6 +337,7 @@ export default function App() {
   const pendingAreaLabel = `${pendingM2.toFixed(2)}㎡ / ${m2ToJou(pendingM2).toFixed(1)}畳 / ${m2ToTsubo(pendingM2).toFixed(2)}坪`;
 
   return (
+    <>
     <div className="app">
       <header className="app-header">
         <div className="brand">🏠 間取りシミュレーター</div>
@@ -355,6 +359,9 @@ export default function App() {
           </div>
           <button onClick={() => setSettingsOpen(true)}>⚙ 設定</button>
           <button onClick={() => setShareOpen(true)}>🔗 共有</button>
+          <button onClick={() => window.print()} title="印刷（階ごとに1ページ）">
+            🖨 印刷
+          </button>
           <button
             aria-haspopup="menu"
             onClick={(e) => {
@@ -603,5 +610,7 @@ export default function App() {
         />
       )}
     </div>
+    <PrintSheet planName={activePlanName} doc={printDoc} />
+    </>
   );
 }

@@ -1,6 +1,6 @@
 import { cellsToM2, m2ToJou, m2ToTsubo } from '../constants';
 import type { FloorData } from '../types';
-import { bbox } from '../utils/geometry';
+import { bbox, occupiedCellCount } from '../utils/geometry';
 
 interface Props {
   floors: Record<number, FloorData>;
@@ -8,11 +8,6 @@ interface Props {
   cellMm: number;
 }
 
-function occupiedCells(f: FloorData): number {
-  const set = new Set<string>();
-  for (const r of f.rooms) for (const c of r.cells) set.add(c);
-  return set.size;
-}
 
 function AreaTriple({ cells, cellMm }: { cells: number; cellMm: number }) {
   const m2 = cellsToM2(cells, cellMm);
@@ -24,8 +19,8 @@ function AreaTriple({ cells, cellMm }: { cells: number; cellMm: number }) {
 }
 
 export default function SummaryPanel({ floors, currentFloor, cellMm }: Props) {
-  const c1 = occupiedCells(floors[1]);
-  const c2 = occupiedCells(floors[2]);
+  const c1 = occupiedCellCount(floors[1]);
+  const c2 = occupiedCellCount(floors[2]);
 
   const cur = floors[currentFloor];
   const all = new Set<string>();

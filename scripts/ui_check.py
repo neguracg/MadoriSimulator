@@ -75,7 +75,14 @@ from ui_scn_input import (
     sc_typing_is_one_undo_step,
 )
 from ui_scn_plans import sc_duplicate_plan, sc_file_menu_export_backup_import, sc_other_tab_plans_join, sc_share_link_uses_public_base
-from ui_scn_view import sc_fit_all_shows_whole_content, sc_sp_fit_all, sc_sp_layout, sc_two_finger_pan_scrolls_canvas
+from ui_scn_view import (
+    sc_fit_all_shows_whole_content,
+    sc_print_layout,
+    sc_print_settles_move_mode_overlap,
+    sc_sp_fit_all,
+    sc_sp_layout,
+    sc_two_finger_pan_scrolls_canvas,
+)
 
 
 NPX = shutil.which("npx.cmd") or shutil.which("npx") or "npx"
@@ -269,6 +276,8 @@ SCENARIOS = [
     Scenario("sp_layout", "B10 F5", sc_sp_layout),
     Scenario("two_finger_pan_scrolls_canvas", "F5", sc_two_finger_pan_scrolls_canvas),
     Scenario("sp_fit_all", "F5", sc_sp_fit_all),
+    Scenario("print_layout", "F2", sc_print_layout),
+    Scenario("print_settles_move_mode_overlap", "F2", sc_print_settles_move_mode_overlap),
     Scenario("door_follows_edge_drag", "F6", sc_door_follows_edge_drag),
     Scenario("toolbar_adds_door_and_window", "F4", sc_toolbar_adds_door_and_window),
     Scenario("delete_room_removes_its_door", "B11", sc_delete_room_removes_its_door),

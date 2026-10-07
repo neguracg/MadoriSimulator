@@ -1,4 +1,4 @@
-import { cellsToM2, m2ToJou, m2ToTsubo } from '../constants';
+import { cellsToM2, m2ToJou, m2ToTsubo, roomColor } from '../constants';
 import type { CellAction, Room, RoomPatch, RoomType } from '../types';
 
 interface Props {
@@ -23,8 +23,7 @@ export default function PropertyPanel(props: Props) {
     );
   }
 
-  const type = roomTypes.find((t) => t.id === room.typeId);
-  const color = room.colorOverride ?? type?.color ?? '#cccccc';
+  const color = roomColor(room, roomTypes);
   const m2 = cellsToM2(room.cells.length, cellMm);
 
   const handleType = (v: string) => {

@@ -1,10 +1,11 @@
 // @owns 間取り図(キャンバス)の描画と、その上のマウス/タッチ操作（範囲選択・部屋の移動・辺/角ハンドル・ドア/窓・家具のドラッグ）
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BASE_CELL_PX, DOOR_COLOR, GRID_H, GRID_W, WINDOW_COLOR, cellsToM2, m2ToJou } from '../constants';
+import { BASE_CELL_PX, DOOR_COLOR, GRID_H, GRID_W, WINDOW_COLOR, cellsToM2, m2ToJou, roomColor } from '../constants';
 import { cellKey, parseCell, type CellAction, type CellKey, type FloorData, type Furniture, type Mode, type Opening, type RoomType, type Side } from '../types';
 import { applyRunDrag, bbox, boundaryRuns, boundarySegments, cellOwnerMap, clampRoomDelta, edgeSegment, unionBoundary, type Run } from '../utils/geometry';
 import { useLiveValue } from '../hooks/useLiveValue';
 import { linkedToRoomMove } from '../state/docOps';
+import type { CellBox } from '../utils/viewFit';
 
 interface Props {
   floorData: FloorData;
@@ -24,6 +25,7 @@ interface Props {
   selectedFurnitureId: string | null;
   furnitureArmed: boolean;
   panning?: boolean; // two fingers are scrolling the canvas: the gesture one finger had begun is dropped, no new one starts
+  fit?: CellBox; // printout: draw only this box (cells), as wide as the container; nothing in it is to be touched
   onSelectRoom: (id: string | null) => void;
   onPendingChange: (cells: CellKey[]) => void;
   onExpand: (cells: CellKey[]) => void;
@@ -82,11 +84,6 @@ export default function Canvas(props: Props) {
   const wallPx = Math.max(2, wallMm * pxPerMm);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const typeColor = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const t of roomTypes) m.set(t.id, t.color);
-    return m;
-  }, [roomTypes]);
 
   const cellOwner = useMemo(() => cellOwnerMap(floorData.rooms), [floorData.rooms]);
 
@@ -424,9 +421,10 @@ export default function Canvas(props: Props) {
     <div className="canvas-scroll">
       <svg
         ref={svgRef}
-        width={W}
-        height={H}
-        className={`canvas mode-${mode} act-${cellAction}${placingOpening ? ' placing' : ''}${furnitureArmed ? ' arming' : ''}`}
+        {...(props.fit
+          ? { width: '100%', viewBox: `${props.fit.minX * cell} ${props.fit.minY * cell} ${props.fit.w * cell} ${props.fit.h * cell}` }
+          : { width: W, height: H })}
+        className={props.fit ? 'print-canvas' : `canvas mode-${mode} act-${cellAction}${placingOpening ? ' placing' : ''}${furnitureArmed ? ' arming' : ''}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -462,7 +460,7 @@ export default function Canvas(props: Props) {
         {[...floorData.rooms]
           .sort((a, b) => a.z - b.z)
           .map((r) => {
-            const color = r.colorOverride ?? typeColor.get(r.typeId) ?? '#bbb';
+            const color = roomColor(r, roomTypes);
             const d = displayCells(r.id, r.cells);
             const moving = moveOffset && moveDrag?.roomId === r.id;
             const segs = boundarySegments(d.cells);

@@ -1,4 +1,4 @@
-import { cellKey, parseCell, type CellKey, type Room, type Side } from '../types';
+import { cellKey, parseCell, type CellKey, type FloorData, type Room, type Side } from '../types';
 import { GRID_H, GRID_W } from '../constants';
 
 export type Segment = [number, number, number, number]; // x1,y1,x2,y2 in cell units
@@ -30,6 +30,13 @@ export function cellOwnerMap(rooms: Room[]): Map<CellKey, string> {
     for (const c of r.cells) owner.set(c, r.id);
   }
   return owner;
+}
+
+/** How many cells of a floor are occupied by a room (a cell two rooms claim counts once). The floor area is this times the cell area. */
+export function occupiedCellCount(f: FloorData): number {
+  const cells = new Set<CellKey>();
+  for (const r of f.rooms) for (const c of r.cells) cells.add(c);
+  return cells.size;
 }
 
 /** Union outline of all rooms (the house outer wall). */

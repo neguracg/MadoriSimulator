@@ -2,7 +2,7 @@
 @owns 表示の仕方（拡大・スクロール・画面幅・印刷）を確かめるシナリオ"""
 
 
-from ui_lib import check
+from ui_lib import SHOTS, add_door_at, check, count_color, move_a_over_b, pdf_pages, two_rooms
 
 
 def sc_fit_all_shows_whole_content(env):
@@ -124,3 +124,65 @@ def sc_sp_fit_all(env):
     check(c["y"] - 1 <= y0 and y1 <= c["y"] + c["height"] + 1, f"部屋が縦に見切れている: 部屋 {y0:.0f}..{y1:.0f} / 表示域 {c['y']:.0f}..{c['y'] + c['height']:.0f}")
     check(ui.zoom_pct() >= 100, f"小さな部屋は拡大して見せるはず: {ui.zoom_pct()}%")
     ui.shot_named("sp_fit")
+
+
+def sc_print_layout(env):
+    """F2: printing shows only the printout, one page for each floor that has rooms (heading, drawing, room list, areas), and the room colours
+    survive. Checked on the print media emulation (screenshot) and on a real PDF made without "background graphics" (the browser's default)."""
+    ui = env.ui(794, 1123)  # A4 portrait at 96 dpi
+    ui.open()
+    ui.make_room(2, 2, 7, 6, "LDK", type_name="LDK")  # 6 x 5 = 30 cells
+    ui.make_room(9, 2, 12, 6, "寝室")  # 4 x 5 = 20 cells, the first type (blue)
+    add_door_at(ui, (3, 3), 3.5, 2, 1)
+    ui.page.locator(".floor-tab", has_text="2階").click()
+    ui.make_room(2, 2, 5, 5, "子供部屋", wait_saved=False)  # 4 x 4 = 16 cells (make_room waits on floor 1 only)
+    ui.page.locator(".floor-tab", has_text="1階").click()
+    ui.wait_until(lambda: len(ui.floor(1)["rooms"]) == 2 and len(ui.floor(2)["rooms"]) == 1, "3つの部屋の保存")
+    ui.page.evaluate("() => { window.__printed = 0; window.print = () => { window.__printed += 1; }; }")  # the dialog itself cannot be driven
+    ui.page.locator(".app-header button", has_text="印刷").click()
+    check(ui.page.evaluate("window.__printed") == 1, "「印刷」ボタンが window.print を呼んでいない")
+    ui.page.emulate_media(media="print")
+    ui.settle(200)
+    check(not ui.page.locator(".app").is_visible(), "印刷なのに画面の UI が見えている")
+    check(not ui.page.locator(".app-header").is_visible(), "印刷なのにヘッダーが見えている")
+    check(ui.page.locator(".print-page").count() == 2, "部屋がある階（1階・2階）ごとに1ページのはず")
+    heads = [t.strip() for t in ui.page.locator(".print-page h1").all_text_contents()]
+    check(heads == ["間取り 1 1階", "間取り 1 2階"], f"見出し: {heads}")
+    rows = [[c.strip() for c in tr.locator("td").all_text_contents()] for tr in ui.page.locator(".print-page").nth(0).locator("tbody tr").all()]
+    check(rows == [["LDK", "LDK", "6.21", "3.8"], ["寝室", "居室", "4.14", "2.6"]], f"1階の部屋一覧: {rows}")
+    total = " ".join((ui.page.locator(".print-total").nth(0).text_content() or "").split())
+    check("1階 合計 10.35㎡" in total and "延床面積（全階）13.66㎡" in total, f"面積の行: {total}")
+    ui.shot_named("print_floor1", full_page=True)
+    shot = ui.page.screenshot(full_page=True)
+    LDK_FILL, ROOM_FILL = (250, 215, 160), (191, 217, 234)  # the colours of LDK (#F5B041) and 居室 (#7FB3D5) at the 50% the canvas fills them with
+    check(count_color(shot, LDK_FILL) > 3000 and count_color(shot, ROOM_FILL) > 3000, "印刷の表示に部屋の色が出ていない")
+    # a real PDF, made the way a browser makes it by default: without "background graphics"
+    pdf = ui.page.pdf(format="A4", print_background=False, prefer_css_page_size=True)
+    texts, pngs = pdf_pages(pdf)
+    check(len(texts) == 2, f"PDF は2ページ（階ごとに1ページ）のはず: {len(texts)} ページ")
+    check("間取り 1 1階" in texts[0] and "LDK" in texts[0] and "子供部屋" in texts[1], "PDF の各ページの中身が違う")
+    check("設定" not in "".join(texts) and "ファイル" not in "".join(texts), "PDF に画面のボタンが出ている")
+    for i, png in enumerate(pngs):
+        (SHOTS / f"print_pdf_page{i + 1}.png").write_bytes(png)
+    CHIP = (245, 176, 65)  # the colour chip in the room list is a CSS background: only print-color-adjust keeps it
+    check(count_color(pngs[0], LDK_FILL) > 3000 and count_color(pngs[0], ROOM_FILL) > 3000, "PDF に部屋の色が出ていない")
+    check(count_color(pngs[0], CHIP, tol=6) > 20, "一覧の色チップが PDF に出ていない（背景のグラフィックを切ると消える）")
+    # control: without print-color-adjust the same PDF loses the chips, so the check above can see the difference
+    ui.page.add_style_tag(content=".print-sheet, .print-sheet * { -webkit-print-color-adjust: economy !important; print-color-adjust: economy !important; }")
+    _, plain = pdf_pages(ui.page.pdf(format="A4", print_background=False, prefer_css_page_size=True))
+    check(count_color(plain[0], CHIP, tol=6) == 0, "対照: print-color-adjust を外しても色チップが出る（検査が効いていない）")
+    check(count_color(plain[0], LDK_FILL) > 3000, "対照: 図の塗りまで消えた（図は背景ではなく内容のはず）")
+
+
+def sc_print_settles_move_mode_overlap(env):
+    """Printing while rooms still overlap in move mode prints them as they will be once settled: no cell is counted twice in the list."""
+    ui = env.ui(794, 1123)
+    ui.open()
+    two_rooms(ui)  # A 3x3 and B 3x3
+    move_a_over_b(ui)  # A (on top) covers a column of B: B keeps 6 of its 9 cells
+    ui.page.emulate_media(media="print")
+    ui.settle(200)
+    rows = {r[0]: r[2] for r in ([c.strip() for c in tr.locator("td").all_text_contents()] for tr in ui.page.locator("tbody tr").all())}
+    check(rows == {"A": "1.86", "B": "1.24"}, f"重なりを解消した面積のはず（A 9マス・B 6マス）: {rows}")
+    total = " ".join((ui.page.locator(".print-total").text_content() or "").split())
+    check("1階 合計 3.11㎡" in total, f"合計は重なりを数えない: {total}")
