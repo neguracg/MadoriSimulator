@@ -255,6 +255,23 @@ def cell_xy(c):
     return int(x), int(y)
 
 
+def no_overlap(doc):
+    cells = [c for r in doc["floors"]["1"]["rooms"] for c in r["cells"]]
+    return len(cells) == len(set(cells))
+
+
+def two_rooms(ui):
+    ui.make_room(2, 2, 4, 4, "A")
+    ui.make_room(6, 2, 8, 4, "B")
+
+
+def move_a_over_b(ui):
+    """In move mode drag A two cells to the right so it covers a column of B: the document holds overlapping rooms until move mode is left."""
+    ui.page.locator("button.mode-btn", has_text="移動").click()
+    ui.drag(ui.pt(3, 3), ui.pt(5, 3))
+    ui.wait_until(lambda: not no_overlap(ui.doc()), "A を B に重ねる")
+
+
 def add_door_at(ui, room_cell, gx, gy, total):
     """Add a door (first width) through the context menu of the room covering room_cell; it snaps to the wall edge nearest grid point (gx, gy)."""
     ui.page.mouse.click(*ui.pt(*room_cell), button="right")

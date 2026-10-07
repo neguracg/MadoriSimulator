@@ -49,6 +49,7 @@ const EDGE_CALLS: Record<string, Call[] | string> = {
   translateRoom: [(d) => docOps.translateRoom(d, 1, 'A', 99, 99), (d) => docOps.translateRoom(d, 1, 'B', -99, -99), (d) => docOps.translateRoom(d, 1, 'M', 5, -7)],
   pasteRoom: [(d) => docOps.pasteRoom(d, 1, room('src', ['63,63', '62,63']), null, 'new', 5, 5)],
   resolveOverlaps: [(d) => docOps.resolveOverlaps(d, 1), (d) => docOps.resolveOverlaps(docOps.translateRoom(d, 1, 'B', 20, 20), 1)],
+  resolveAllOverlaps: [(d) => docOps.resolveAllOverlaps(docOps.translateRoom(d, 1, 'B', 20, 20)), (d) => docOps.resolveAllOverlaps(d)],
   patchRoom: 'its patch type (RoomPatch) cannot carry cells, layer or id',
   reorderRoom: 'changes the layer order only (overlaps exist only in move mode, and are settled by resolveOverlaps)',
   linkedToRoomMove: 'a query: it returns ids, not a document',

@@ -1,6 +1,6 @@
 import LZString from 'lz-string';
 import type { Doc } from '../types';
-import { normalizeDoc } from '../state/migrate';
+import { acceptDoc } from '../state/migrate';
 
 interface SharePayload {
   n: string; // plan name
@@ -17,7 +17,7 @@ export function decodePlan(s: string): { name: string; doc: Doc } | null {
     const raw = LZString.decompressFromEncodedURIComponent(s);
     if (!raw) return null;
     const o = JSON.parse(raw) as { n?: unknown; d?: unknown } | null;
-    const doc = normalizeDoc(o?.d); // old / partial documents are completed here, like at every other entrance
+    const doc = acceptDoc(o?.d); // old / partial / unsettled documents are repaired here, like at every other entrance
     const name = o?.n;
     if (doc) return { name: typeof name === 'string' && name ? name : '受信した間取り', doc };
   } catch {

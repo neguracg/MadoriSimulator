@@ -23,6 +23,17 @@ describe('decodePlan', () => {
     expect(out.doc.settings).toEqual({ cellMm: 455, wallMm: 120 });
   });
 
+  it('移動モードのまま作った（部屋が重なった）共有リンクも、重なりを解消して返す', () => {
+    const doc = defaultDoc();
+    doc.floors[1].rooms.push(
+      { id: 'A', name: 'A', typeId: 'living', cells: ['2,2', '3,2'], z: 1 },
+      { id: 'B', name: 'B', typeId: 'ldk', cells: ['3,2', '4,2'], z: 2 },
+    );
+    const out = decodePlan(encodePlan('重なり', doc))!;
+    expect(out.doc.floors[1].rooms.find((r) => r.id === 'A')!.cells).toEqual(['2,2']);
+    expect(out.doc.floors[1].rooms.find((r) => r.id === 'B')!.cells).toEqual(['3,2', '4,2']);
+  });
+
   it('名前が無い・文字列でなければ既定の名前', () => {
     expect(decodePlan(pack({ d: defaultDoc() }))!.name).toBe('受信した間取り');
     expect(decodePlan(pack({ n: 5, d: defaultDoc() }))!.name).toBe('受信した間取り');

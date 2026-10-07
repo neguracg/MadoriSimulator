@@ -1,7 +1,7 @@
 // @owns 複数間取り(プロジェクト)の localStorage 永続化とファイル入出力（保存キー・退避・取り込みの正本）
 import { defaultDoc, uid } from '../constants';
 import type { Doc } from '../types';
-import { normalizeDoc } from './migrate';
+import { acceptDoc } from './migrate';
 
 export const PROJECT_KEY = 'madori-simulator-project-v1';
 /** Single-document key from before plans existed. Read for migration only, never written. */
@@ -86,7 +86,7 @@ function readPlans(list: unknown[], keepIds: boolean, fallbackName: (i: number) 
   const used = new Set<string>();
   let dropped = 0;
   list.forEach((p, i) => {
-    const doc = isObj(p) ? normalizeDoc(p.doc) : null;
+    const doc = isObj(p) ? acceptDoc(p.doc) : null;
     if (!isObj(p) || !doc) {
       dropped++;
       return;
@@ -115,7 +115,7 @@ function parseProject(raw: string): { project: Project | null; damaged: boolean 
 
 function parseDoc(text: string): Doc | null {
   try {
-    return normalizeDoc(JSON.parse(text));
+    return acceptDoc(JSON.parse(text));
   } catch {
     return null;
   }
@@ -124,7 +124,8 @@ function parseDoc(text: string): Doc | null {
 /**
  * Load the saved project. The raw string is copied to BACKUP_PREV_KEY before it is parsed; anything that
  * cannot be loaded as is (broken JSON, plans without a document) is parked under CORRUPT_KEY_PREFIX.
- * Every document goes through normalizeDoc. Falls back to the legacy single-document key, then a new project.
+ * Every document goes through acceptDoc (repaired, and settled: no overlapping rooms). Falls back to the legacy
+ * single-document key, then a new project.
  */
 export function loadProject(storage: StorageLike | null = defaultStorage()): Project {
   if (!storage) return freshProject();
@@ -168,7 +169,7 @@ export function parseImportFile(text: string, fileName: string): Plan[] {
   if (isObj(data) && Array.isArray(data.plans)) {
     return readPlans(data.plans, false, (i) => `${base} ${i + 1}`).plans;
   }
-  const doc = normalizeDoc(data);
+  const doc = acceptDoc(data);
   return doc ? [makePlan(base, doc)] : [];
 }
 

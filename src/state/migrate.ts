@@ -25,6 +25,7 @@ import {
   type Settings,
   type Side,
 } from '../types';
+import { resolveAllOverlaps } from './docOps';
 
 type Obj = Record<string, unknown>;
 
@@ -149,4 +150,17 @@ export function normalizeDoc(raw: unknown): Doc | null {
   const floors: Record<number, FloorData> = {};
   for (const f of FLOORS) floors[f] = normalizeFloor(src[f]);
   return { version: 1, floors, roomTypes: normalizeRoomTypes(raw.roomTypes), settings: normalizeSettings(raw.settings) };
+}
+
+/**
+ * THE door for a document that comes from outside (a stored project, an imported file, a share link): every entrance
+ * calls this and nothing else (src/lint/docEntrance.test.ts fails when one calls normalizeDoc directly).
+ * normalizeDoc validates and repairs the shape; then the rooms are settled. A document at rest holds no overlapping
+ * rooms, but one saved while still in move mode (tab closed or page reloaded before leaving it) does: it is settled
+ * exactly as leaving move mode would (the room on top keeps a contested cell, doors/windows no room has go).
+ * null when it is not a document at all.
+ */
+export function acceptDoc(raw: unknown): Doc | null {
+  const doc = normalizeDoc(raw);
+  return doc && resolveAllOverlaps(doc);
 }

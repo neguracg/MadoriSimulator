@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_TYPES, defaultDoc } from '../constants';
 import type { Doc } from '../types';
-import { normalizeDoc } from './migrate';
+import { acceptDoc, normalizeDoc } from './migrate';
 
 /** A document exactly as the current app writes it (every field filled in). */
 function normalDoc(): Doc {
@@ -236,5 +236,50 @@ describe('normalizeDoc: 開口部・家具・種別', () => {
   it('1階と2階の外の階は取り込まない', () => {
     const out = normalizeDoc({ floors: { 1: {}, 2: {}, 3: { rooms: [{ cells: ['0,0'] }] } } })!;
     expect(Object.keys(out.floors)).toEqual(['1', '2']);
+  });
+});
+
+describe('acceptDoc: 外から入る文書の入口（形の補完 + 重なりの解消）', () => {
+  /** B (z2) covers (1,0) of A (z1); a door on A's wall and one in the open. */
+  const overlapped = () => ({
+    floors: {
+      1: {
+        rooms: [
+          { id: 'A', name: 'A', typeId: 'living', cells: ['0,0', '1,0'], z: 1 },
+          { id: 'B', name: 'B', typeId: 'ldk', cells: ['1,0', '2,0'], z: 2 },
+          { id: 'C', name: 'C', typeId: 'living', cells: ['5,5'], z: 0 },
+          { id: 'D', name: 'D', typeId: 'living', cells: ['5,5'], z: 1 }, // C (z0) lies wholly under D (z1): it loses its only cell
+        ],
+        openings: [
+          { id: 'wall', kind: 'door', cx: 0, cy: 0, side: 'W', size: 800 },
+          { id: 'stray', kind: 'window', cx: 30, cy: 30, side: 'S', size: 900 },
+        ],
+      },
+    },
+  });
+
+  it('重なった部屋は上（z が大きい方）が勝ち、全部のマスを失った部屋は消え、宙に浮いた開口部も消える', () => {
+    const out = acceptDoc(overlapped())!;
+    const byId = Object.fromEntries(out.floors[1].rooms.map((r) => [r.id, r.cells]));
+    expect(byId.A).toEqual(['0,0']);
+    expect(byId.B).toEqual(['1,0', '2,0']);
+    expect(byId.D).toEqual(['5,5']);
+    expect('C' in byId).toBe(false);
+    expect(out.floors[1].openings.map((o) => o.id)).toEqual(['wall']);
+  });
+
+  it('重なりの無い文書は normalizeDoc と同値（既存の入力は変わらない）', () => {
+    expect(acceptDoc(normalDoc())).toEqual(normalizeDoc(normalDoc()));
+    expect(acceptDoc(JSON.parse(JSON.stringify(legacyRaw())))).toEqual(normalizeDoc(legacyRaw()));
+  });
+
+  it('1階も2階も解消する。入力は書き換えない。文書でなければ null', () => {
+    const raw = overlapped() as { floors: Record<number, unknown> };
+    raw.floors[2] = { rooms: [{ id: 'X', cells: ['0,0'], z: 1 }, { id: 'Y', cells: ['0,0', '1,0'], z: 2 }] };
+    const frozen = deepFreeze(raw);
+    const out = acceptDoc(frozen)!;
+    expect(out.floors[2].rooms.map((r) => [r.id, r.cells])).toEqual([['Y', ['0,0', '1,0']]]);
+    expect(acceptDoc(null)).toBeNull();
+    expect(acceptDoc({ floors: 'x' })).toBeNull();
   });
 });

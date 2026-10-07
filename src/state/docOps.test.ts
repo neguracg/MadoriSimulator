@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GRID_H, GRID_W, defaultDoc } from '../constants';
 import type { Doc, FloorData, Furniture, Room } from '../types';
-import { linkedToRoomMove, pasteFurniture, pasteRoom, translateRoom } from './docOps';
+import { linkedToRoomMove, pasteFurniture, pasteRoom, resolveAllOverlaps, translateRoom } from './docOps';
 
 const CELL = 455;
 
@@ -248,5 +248,21 @@ describe('pasteFurniture: グリッド内に収める（B12）', () => {
 
   it('マスの大きさ(settings.cellMm)に合わせた端で止める', () => {
     expect(paste(item(3000, 0), 5000, 0, 100).x).toBe(GRID_W * 100 - 400);
+  });
+});
+
+describe('resolveAllOverlaps: 全部の階の重なりを解消する', () => {
+  const room = (id: string, cells: string[], z: number): Room => ({ id, name: id, typeId: 'living', cells, z });
+
+  it('1階も2階も、上の部屋が重なったマスを取る。何も無ければ同じ文書を返す', () => {
+    const d = defaultDoc();
+    d.floors[1].rooms.push(room('a', ['0,0', '1,0'], 1), room('b', ['1,0', '2,0'], 2));
+    d.floors[2].rooms.push(room('c', ['0,0', '0,1'], 2), room('d', ['0,1', '0,2'], 1));
+    const out = resolveAllOverlaps(d);
+    expect(out.floors[1].rooms.map((r) => [r.id, r.cells])).toEqual([['a', ['0,0']], ['b', ['1,0', '2,0']]]);
+    expect(out.floors[2].rooms.map((r) => [r.id, r.cells])).toEqual([['c', ['0,0', '0,1']], ['d', ['0,2']]]);
+
+    expect(resolveAllOverlaps(out)).toBe(out); // 解消済み（部屋も開口部も触るものが無い）
+    expect(resolveAllOverlaps(defaultDoc())).toEqual(defaultDoc());
   });
 });

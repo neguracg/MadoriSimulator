@@ -1,3 +1,4 @@
+// @owns 間取り文書(Doc)への編集操作（部屋・開口部・家具・種別・設定。画面は文書を直接書き換えず、ここを通す）
 import {
   cellKey,
   parseCell,
@@ -13,7 +14,7 @@ import {
   type Side,
 } from '../types';
 import { cellOwnerMap, clampRoomDelta, connectedComponents, inGrid, neighborCell } from '../utils/geometry';
-import { GRID_H, GRID_W, nextAutoColor, uid } from '../constants';
+import { FLOORS, GRID_H, GRID_W, nextAutoColor, uid } from '../constants';
 import { pruneOrphans, reconcileOpenings } from './openingOps';
 
 function mapFloor(doc: Doc, floor: number, fn: (f: FloorData) => FloorData): Doc {
@@ -207,6 +208,14 @@ export function resolveOverlaps(doc: Doc, floor: number): Doc {
   const settled = kept === total ? f : normalize({ ...f, rooms: f.rooms.map((r) => ({ ...r, cells: keep.get(r.id)! })) });
   const pruned = pruneOrphans(settled);
   return pruned === f ? doc : mapFloor(doc, floor, () => pruned); // nothing to resolve or prune -> no change
+}
+
+/**
+ * resolveOverlaps on every floor. A document at rest (stored, exported, shared) holds no overlapping rooms: only move
+ * mode does, and leaving the mode settles them. Returns the same doc when no floor has anything to settle.
+ */
+export function resolveAllOverlaps(doc: Doc): Doc {
+  return FLOORS.reduce((d, f) => resolveOverlaps(d, f), doc);
 }
 
 /** Replace a room's cells exactly (used by corner/edge drag). Steals cells from others. */

@@ -54,6 +54,24 @@ function roomDoc(): Doc {
   return d;
 }
 
+/**
+ * A document saved while still in move mode: B (on top, z2) sits on two cells of A (z1), and a door hangs in the open.
+ * Settled, B keeps (3,2) (3,3) (4,2) (4,3); A is left with (2,2) (2,3); the door on A's outer wall stays, the stray one goes.
+ */
+function overlappingDoc(): Doc {
+  const d = defaultDoc();
+  d.floors[1].rooms.push(
+    { id: 'A', name: 'A', typeId: 'living', cells: ['2,2', '3,2', '2,3', '3,3'], z: 1 },
+    { id: 'B', name: 'B', typeId: 'ldk', cells: ['3,2', '4,2', '3,3', '4,3'], z: 2 },
+  );
+  d.floors[1].openings.push(
+    { id: 'wall', kind: 'door', cx: 2, cy: 2, side: 'W', size: 800 },
+    { id: 'stray', kind: 'door', cx: 20, cy: 20, side: 'N', size: 800 },
+  );
+  return d;
+}
+const cellsOf = (d: Doc, id: string) => [...d.floors[1].rooms.find((r) => r.id === id)!.cells].sort();
+
 function sampleProject(): Project {
   return {
     version: 1,
@@ -172,6 +190,35 @@ describe('loadProject', () => {
     const p = loadProject(s);
     expect(p.activePlanId).toBe('p1');
     expect(new Set(p.plans.map((x) => x.id)).size).toBe(2);
+  });
+});
+
+describe('loadProject: 重なったまま保存された文書', () => {
+  it('移動モードのまま閉じて重なっていた部屋は、読み込む時に上の部屋が勝つ形で解消する（元の文字列は backup-prev に残る）', () => {
+    const s = new MemoryStorage();
+    const raw = JSON.stringify({ version: 1, activePlanId: 'p1', plans: [{ id: 'p1', name: '案', doc: overlappingDoc() }] });
+    s.setItem(PROJECT_KEY, raw);
+    const doc = loadProject(s).plans[0].doc;
+    expect(cellsOf(doc, 'B')).toEqual(['3,2', '3,3', '4,2', '4,3']);
+    expect(cellsOf(doc, 'A')).toEqual(['2,2', '2,3']);
+    expect(doc.floors[1].openings.map((o) => o.id)).toEqual(['wall']);
+    expect(s.getItem(BACKUP_PREV_KEY)).toBe(raw); // 重なっていた元のデータは失われない
+    expect(corruptKeys(s)).toEqual([]); // 解消は破損ではない
+  });
+
+  it('重なりが無い文書は何も変わらない（部屋・開口部・家具とも同値）', () => {
+    const s = new MemoryStorage();
+    s.setItem(PROJECT_KEY, JSON.stringify(sampleProject()));
+    expect(loadProject(s)).toEqual(sampleProject());
+  });
+
+  it('旧キーの文書・取り込むファイルも同じく解消する（文書の入口は全部 acceptDoc を通る）', () => {
+    const s = new MemoryStorage();
+    s.setItem(OLD_DOC_KEY, JSON.stringify(overlappingDoc()));
+    expect(cellsOf(loadProject(s).plans[0].doc, 'A')).toEqual(['2,2', '2,3']);
+    expect(cellsOf(parseImportFile(JSON.stringify(overlappingDoc()), 'x.json')[0].doc, 'A')).toEqual(['2,2', '2,3']);
+    const proj = { version: 1, activePlanId: 'p', plans: [{ id: 'p', name: 'P', doc: overlappingDoc() }] };
+    expect(cellsOf(parseImportFile(JSON.stringify(proj), 'all.json')[0].doc, 'A')).toEqual(['2,2', '2,3']);
   });
 });
 

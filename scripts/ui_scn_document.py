@@ -15,6 +15,9 @@ from ui_lib import (
     check,
     legacy_project,
     lz_compress,
+    move_a_over_b,
+    no_overlap,
+    two_rooms,
 )
 
 
@@ -144,3 +147,18 @@ def sc_save_failure_shows_banner(env):
     ui.make_room(8, 2, 10, 4, "B", wait_saved=False)
     ui.wait_until(lambda: ui.page.locator(".save-error").count() == 0, "保存が通ったら赤い帯が消える")
     ui.wait_until(lambda: len(ui.floor()["rooms"]) == 2, "復帰後の保存")
+
+
+def sc_reload_in_move_mode_settles_overlaps(env):
+    """Closing / reloading while still in move mode left overlapping rooms in storage; they come back settled (the room on top keeps the cells)."""
+    ui = env.ui()
+    ui.open()
+    two_rooms(ui)
+    move_a_over_b(ui)  # the autosave holds the unsettled document: A sits on a column of B
+    check(not no_overlap(ui.doc()), "前提: 保存データが重なっていない")
+    raw = ui.storage(PROJECT_KEY)
+    ui.reload()
+    ui.wait_until(lambda: no_overlap(ui.doc()), "再読み込み後は重なりが解消された文書が保存される")
+    check({r["name"] for r in ui.floor()["rooms"]} == {"A", "B"}, "重なりを解消しても部屋が消えている")
+    check("A" in ui.canvas_text() and "B" in ui.canvas_text(), "再読み込み後に部屋が表示されない")
+    check(ui.storage(BACKUP_KEY) == raw, "重なっていた元の文字列が backup-prev に残っていない")

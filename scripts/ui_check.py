@@ -60,6 +60,7 @@ from ui_scn_document import (
     sc_import_project_file_adds_all_plans,
     sc_legacy_project_boots,
     sc_old_doc_key_migrates,
+    sc_reload_in_move_mode_settles_overlaps,
     sc_save_failure_shows_banner,
     sc_share_link_legacy_doc,
 )
@@ -242,6 +243,7 @@ SCENARIOS = [
     Scenario("import_project_file_adds_all_plans", "B2", sc_import_project_file_adds_all_plans),
     Scenario("import_legacy_and_bad_file", "B1 B2", sc_import_legacy_and_bad_file),
     Scenario("save_failure_shows_banner", "2章", sc_save_failure_shows_banner),
+    Scenario("reload_in_move_mode_settles_overlaps", "B12", sc_reload_in_move_mode_settles_overlaps),
     Scenario("reload_keeps_document", "-", sc_reload_keeps_document),
     Scenario("edge_drag_undo_count", "B5", sc_edge_drag_undo_count),
     Scenario("corner_drag_undo_count", "B5", sc_corner_drag_undo_count),
