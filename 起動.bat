@@ -16,7 +16,8 @@ if not exist "node_modules" (
 echo Starting Madori Simulator...
 echo Your browser will open automatically.
 echo To quit, close this window.
-call npm run dev
+rem --open: this launcher is the only place that opens a browser (vite.config.ts never does).
+call npm run dev -- --open
 if errorlevel 1 (
   echo.
   echo Could not start the server. If port 5173 is already in use, Madori Simulator may already be running.

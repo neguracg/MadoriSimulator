@@ -9,9 +9,11 @@
   python scripts/ui_check.py --list          # シナリオ一覧
 
 サーバーはこのスクリプトが自分で起動し、終了時（失敗・Ctrl+C でも）必ず止める。手で起動した物は使わない。
-  dev : npx vite --port 4178 --strictPort（env PORT=4178 で自動オープンを抑止）  -> http://localhost:4178/
-  prod: npx vite preview --port 4179 --strictPort --base /MadoriSimulator/       -> http://localhost:4179/MadoriSimulator/
+  dev : npx vite --port 4178 --strictPort（env PORT=4178 BROWSER=none）  -> http://localhost:4178/
+  prod: npx vite preview --port 4179 --strictPort --base /MadoriSimulator/（env BROWSER=none）  -> http://localhost:4179/MadoriSimulator/
         (the base is read from PUBLIC_APP_URL in src/constants.ts, the same line vite.config.ts uses)
+  両方とも env BROWSER=none を付けて起動する。自動オープンの抑止は vite.config.ts（server.open・preview.open を既定オフ）との二重化で、
+  設定が将来戻っても、この試験が利用者の Chrome にタブを出さない（2026-10-07: prod は env が空で、実行のたびにタブが開いていた）。
 ブラウザの起動条件は C:/Claude/101_KaihatsuHyoujun/shiken/tools/browser_check.py と同じ
 （headless・channel="chrome"・1280x900・ja-JP・Asia/Tokyo・light・reduced motion）。失敗しても別経路へは落とさない。
 シナリオ本体は ui_scn_*.py（概念ごと）、共通部品は ui_lib.py。実行する一覧（SCENARIOS）はこのファイルの1か所。
@@ -87,9 +89,10 @@ from ui_scn_view import (
 
 NPX = shutil.which("npx.cmd") or shutil.which("npx") or "npx"
 BASE = app_base_path()  # vite.config.ts gives the production build this base only for "build"; preview must be told the same one
+# env BROWSER=none: vite's openBrowser() does nothing for it (the second lock; vite.config.ts is the first). Both targets need it.
 TARGETS = {
-    "dev": dict(port=4178, path="/", cmd=["vite", "--port", "4178", "--strictPort"], env={"PORT": "4178"}),
-    "prod": dict(port=4179, path=BASE, cmd=["vite", "preview", "--port", "4179", "--strictPort", "--base", BASE], env={}),
+    "dev": dict(port=4178, path="/", cmd=["vite", "--port", "4178", "--strictPort"], env={"PORT": "4178", "BROWSER": "none"}),
+    "prod": dict(port=4179, path=BASE, cmd=["vite", "preview", "--port", "4179", "--strictPort", "--base", BASE], env={"BROWSER": "none"}),
 }
 
 

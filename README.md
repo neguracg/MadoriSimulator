@@ -114,7 +114,7 @@ React 18 + TypeScript + Vite 5。共有リンクの圧縮に lz-string、QR に 
 
 ```bash
 npm install
-npm run dev                  # 開発サーバー（http://localhost:5173。ポートが塞がっていると止まる）
+npm run dev                  # 開発サーバー（http://localhost:5173。ポートが塞がっていると止まる。ブラウザは自動では開かない）
 npm run build                # 型検査（tsc）+ 本番ビルド → dist/
 npx vitest run               # 単体テスト（npm test でも同じ。件数はここで確認する）
 python scripts/ui_check.py   # 画面E2E（下記）
@@ -122,6 +122,7 @@ npm run deploy               # build して dist/ を gh-pages ブランチへ�
 ```
 
 - **画面E2E**（`scripts/ui_check.py`）: ヘッドレスの Chrome（Playwright）で、開発サーバー（dev）と本番ビルド（prod）の両方を自分で起動して操作し、終了時に必ず止めます。Python・Playwright・Chrome が必要です（`pip install playwright && python -m playwright install chrome`）。prod は先に `npm run build` が必要で（`dist/` が `src/` より古いと止まります）、ポート 4178 / 4179 が空いていること。オプション: `--target dev|prod|both`（既定は both）、`--only <名前の一部>`、`--list`（シナリオ一覧）。終了コードは 0=全て成功 / 1=失敗あり / 2=起動・環境エラー。スクリーンショットは `docs/shots/`（git 管理外）へ出ます。
+- **ブラウザの自動オープン**: `vite.config.ts` は開発サーバー・`vite preview` とも自動ではブラウザを開きません（`server.open`・`preview.open` を `false` に固定）。開くのは `起動.bat`（`npm run dev -- --open`）だけです。試験・サブエージェント・プレビューが何度サーバーを起動しても、利用者の Chrome にタブが増えないようにするためで、`ui_check.py` は念のため env `BROWSER=none` も付けて起動します。`src/lint/noAutoOpen.test.ts` が設定と `起動.bat` の両方を固定します。
 - **公開先の住所**: `src/constants.ts` の `PUBLIC_APP_URL` の 1 行が正本です。`vite.config.ts` の本番ビルドの基底パス（`/MadoriSimulator/`）・共有リンクの基底・`ui_check.py` の prod 起動は、すべてこの行から導きます。
 - **コードの読み方**: 各ソースの 1 行目のコメント `@owns` が、そのファイルの担当する概念です。間取りの編集操作は `src/state/docOps.ts` を通り、外から入る間取り文書（保存データ・読み込んだファイル・共有リンク）は `src/state/migrate.ts` の `acceptDoc` を通ります（それ以外が `normalizeDoc` を直接呼ぶと `src/lint/docEntrance.test.ts` が落ちます）。
 - **docs/**: `WORKLOG.md`（作業ログ）・`BUGLOG.md`（バグ台帳）・`KANSA_20260928.md`（全体監査の所見と設計判断）。`SHIJI_20261007_kansa.md` は完了済みの修正指示書で、記録として残しています。
