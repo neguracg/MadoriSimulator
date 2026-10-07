@@ -7,6 +7,7 @@
 """
 
 
+import copy
 import json
 import re
 import subprocess
@@ -96,6 +97,18 @@ class Ui:
                 d.accept()
         except Exception:
             pass  # the page was closed while the dialog was open
+
+    def another_tab(self):
+        """A second page in the SAME browser context (same origin, same localStorage): what a second tab of the app is.
+        It has its own page; errors / notes / dialogs go to the same lists as this one's."""
+        page = self.ctx.new_page()
+        page.set_default_timeout(15000)
+        page.on("pageerror", lambda e: self.errors.append(f"pageerror: {e}"))
+        page.on("console", self._on_console)
+        page.on("dialog", self._on_dialog)
+        other = copy.copy(self)
+        other.page = page
+        return other
 
     # ---- navigation
     def open(self, suffix=""):

@@ -11,6 +11,7 @@ import {
   buildProject,
   copyPlan,
   exportProject,
+  foreignPlans,
   loadProject,
   makePlan,
   parseImportFile,
@@ -431,5 +432,31 @@ describe('backupFileName', () => {
   it('ローカルの日付で madori-backup-YYYY-MM-DD.json（1桁の月日は 0 埋め）', () => {
     expect(backupFileName(new Date(2026, 9, 7, 23, 59))).toBe('madori-backup-2026-10-07.json');
     expect(backupFileName(new Date(2027, 0, 5))).toBe('madori-backup-2027-01-05.json');
+  });
+});
+
+describe('foreignPlans（別のタブが保存した間取りのうち、このタブが持っていないもの）', () => {
+  it('持っていない id の間取りだけを、保存されたままの id で返す', () => {
+    const raw = JSON.stringify(sampleProject()); // p1, p2
+    expect(foreignPlans(raw, (id) => id === 'p1').map((p) => [p.id, p.name])).toEqual([['p2', '案B']]);
+    expect(foreignPlans(raw, () => true)).toEqual([]);
+    expect(foreignPlans(raw, () => false).map((p) => p.id)).toEqual(['p1', 'p2']);
+  });
+
+  it('保存データが無い・壊れている・間取りが無い時は何も返さない（退避の書き込みもしない）', () => {
+    for (const bad of [null, '', '{broken', '{}', '[]', '{"plans":[]}', '{"plans":[{"id":"x"}]}']) {
+      expect(foreignPlans(bad, () => false), String(bad)).toEqual([]);
+    }
+  });
+
+  it('取り込む間取りも文書の入口を通る（旧形式は補完・重なりは解消）', () => {
+    const raw = JSON.stringify({
+      version: 1,
+      activePlanId: 'n1',
+      plans: [{ id: 'n1', name: '旧', doc: legacyDoc() }, { id: 'n2', name: '重なり', doc: overlappingDoc() }],
+    });
+    const [old, overlap] = foreignPlans(raw, () => false);
+    expect(old.doc.floors[2]).toBeDefined();
+    expect(cellsOf(overlap.doc, 'A')).toEqual(['2,2', '2,3']);
   });
 });

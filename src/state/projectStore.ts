@@ -135,6 +135,17 @@ function parseProject(raw: string): { project: Project | null; damaged: boolean 
   return { project: { version: 1, activePlanId: active, plans }, damaged: dropped > 0 };
 }
 
+/**
+ * The plans in a stored project (the text another tab saved) that this tab has never had, i.e. what a `storage`
+ * event brings. They are read like any stored project (acceptDoc) and keep their ids: that is how "never had" is told.
+ * Nothing here removes or replaces anything.
+ */
+export function foreignPlans(raw: string | null, isKnown: (id: string) => boolean): Plan[] {
+  if (raw === null) return [];
+  const { project } = parseProject(raw);
+  return project ? project.plans.filter((p) => !isKnown(p.id)) : [];
+}
+
 function parseDoc(text: string): Doc | null {
   try {
     return acceptDoc(JSON.parse(text));

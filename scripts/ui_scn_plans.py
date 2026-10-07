@@ -96,3 +96,33 @@ def sc_file_menu_export_backup_import(env):
     notice = ui.wait_until(lambda: ui.page.locator(".notice").text_content(), "追加した件数のメッセージ")
     check("2件の間取りを追加しました" in notice, f"メッセージ: {notice}")
     check(ui.tab_names()[:2] == ["間取り 1", "間取り 2"], f"元のタブが変わった: {ui.tab_names()}")
+
+
+def sc_other_tab_plans_join(env):
+    """Another tab's new plans join this tab (nothing is selected, deletions are not copied, a plan deleted here does not come back),
+    and a tab that only watches never writes its older copies over what the working tab saved."""
+    a = env.ui()
+    a.open()
+    a.make_room(2, 2, 5, 4, "A室")
+    b = a.another_tab()
+    b.open()  # boots from storage: plan 1 with A室
+    a.page.bring_to_front()
+    a.make_room(8, 2, 11, 4, "A2室")  # tab B's copy of plan 1 is now older than what is stored
+    a.page.locator(".plan-tab-add").click()  # tab A makes plan 2
+    b.page.bring_to_front()
+    b.wait_until(lambda: b.tab_names() == ["間取り 1", "間取り 2"], "別のタブで作った間取りがこのタブにも追加される")
+    check(b.active_tab() == "間取り 1", f"取り込んだだけなのに選択が移った: {b.active_tab()}")
+    check("別のタブの間取り" in (b.page.locator(".notice").text_content() or ""), "追加した旨のメッセージが出ていない")
+    b.settle(800)
+    names = [r["name"] for r in a.project()["plans"][0]["doc"]["floors"]["1"]["rooms"]]
+    check(names == ["A室", "A2室"], f"見ているだけのタブが、作業中のタブの保存を古い内容で上書きした: {names}")
+
+    b.page.locator(".plan-tab", has_text="間取り 2").locator(".plan-tab-close").click()  # delete plan 2 in B (the confirm is accepted)
+    b.wait_until(lambda: b.tab_names() == ["間取り 1"], "B で間取り 2 を削除")
+    a.page.bring_to_front()
+    a.settle(800)
+    check(a.tab_names() == ["間取り 1", "間取り 2"], f"別のタブでの削除がこのタブにも反映された: {a.tab_names()}")
+    a.make_room(14, 2, 17, 4, "A3室")  # A saves again, and its project still has plan 2
+    b.page.bring_to_front()
+    b.settle(1000)
+    check(b.tab_names() == ["間取り 1"], f"こちらで削除した間取りが、別のタブの保存から戻ってきた: {b.tab_names()}")

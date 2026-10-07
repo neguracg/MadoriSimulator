@@ -10,7 +10,9 @@ import ShareDialog from './components/ShareDialog';
 import OpeningDialog from './components/OpeningDialog';
 import FurniturePanel from './components/FurniturePanel';
 import FileMenu from './components/FileMenu';
+import { useAutosave } from './hooks/useAutosave';
 import { useNotice } from './hooks/useNotice';
+import { useStorageSync } from './hooks/useStorageSync';
 import { cellsToM2, DEFAULT_FURNITURE_COLOR, FLOORS, m2ToJou, m2ToTsubo, OPENING_MM_RANGE, uid } from './constants';
 import { parseNumberInRange } from './components/NumberField';
 import type { CellAction, CellKey, Doc, Furniture, Mode, Room, RoomType } from './types';
@@ -27,7 +29,6 @@ import {
   loadProject,
   makePlan,
   parseImportFile,
-  saveProject,
   type Plan,
 } from './state/projectStore';
 import { buildShareUrl, clearShareHash, isLocalPage, readSharedFromHash } from './utils/share';
@@ -44,8 +45,10 @@ export default function App() {
 
   const [plans, setPlans] = useState<Plan[]>(boot.plans);
   const [activePlanId, setActivePlanId] = useState(boot.activePlanId);
-  const [saveError, setSaveError] = useState(false); // the last autosave was refused by the browser
+  const { saveError, skipNextSave } = useAutosave(plans, activePlanId, doc); // saveError: the last autosave was refused by the browser
   const [notice, notify] = useNotice(); // a short message that goes away by itself
+  // Every plan id this tab has held. Ids of deleted plans stay in: a plan deleted here must not come back from another tab's copy.
+  const [seenPlanIds] = useState(() => new Set(boot.plans.map((p) => p.id)));
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [floor, setFloor] = useState(1);
@@ -84,10 +87,6 @@ export default function App() {
     return [...set];
   })();
 
-  // autosave the whole project (active plan mirrors current doc)
-  useEffect(() => {
-    setSaveError(!saveProject(buildProject(plans, activePlanId, doc)));
-  }, [doc, plans, activePlanId]);
 
   const resetUi = () => {
     setSelectedRoomId(null);
@@ -125,10 +124,16 @@ export default function App() {
     setModeState('edit');
     resetUi();
   };
-  // Every route that adds plans (new tab, copy, shared link, imported file) comes through here:
-  // park the current document in its own tab, then open the first added plan.
-  const appendPlans = (added: Plan[]) => {
+  // Every route that adds plans (new tab, copy, shared link, imported file, another tab's plans) comes through here.
+  // `select` (the default): park the current document in its own tab, then open the first added plan.
+  // Without it the plans only join the tab list and what is on screen stays.
+  const appendPlans = (added: Plan[], select = true) => {
     if (added.length === 0) return;
+    for (const p of added) seenPlanIds.add(p.id);
+    if (!select) {
+      setPlans((ps) => addPlans(ps, added));
+      return;
+    }
     const saved = leaveCurrentDoc();
     setPlans((ps) => addPlans(ps, added, { id: activePlanId, doc: saved }));
     reset(added[0].doc);
@@ -138,6 +143,15 @@ export default function App() {
     resetUi();
   };
   const addPlan = () => appendPlans([makePlan(`間取り ${plans.length + 1}`)]);
+  // Plans another tab saved that this tab never had join the tab list (nothing is selected, and nothing is written back).
+  useStorageSync(
+    (id) => seenPlanIds.has(id),
+    (fresh) => {
+      skipNextSave();
+      appendPlans(fresh, false);
+      notify(`別のタブの間取りを${fresh.length}件追加しました`);
+    },
+  );
   // A copy of the plan on screen (its document as it will be parked: move mode's overlaps settled), opened at once.
   const duplicatePlan = () => {
     const src = plans.find((p) => p.id === activePlanId);
