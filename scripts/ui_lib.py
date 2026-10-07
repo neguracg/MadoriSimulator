@@ -59,10 +59,12 @@ def app_base_path():
 class Ui:
     """One browser page (own context = own empty localStorage) with the helpers the scenarios share."""
 
-    def __init__(self, env, width, height):
+    def __init__(self, env, width, height, touch=False):
         self.env = env
         self.ctx = env.browser.new_context(
             viewport={"width": width, "height": height},
+            has_touch=touch,  # a touch screen: real finger input is sent with touch_start/move/end below
+            is_mobile=touch,
             device_scale_factor=1,
             color_scheme="light",
             locale="ja-JP",
@@ -97,6 +99,14 @@ class Ui:
                 d.accept()
         except Exception:
             pass  # the page was closed while the dialog was open
+
+    def touch(self, kind, fingers):
+        """Raw touch input through CDP (Playwright's own touchscreen can only tap with one finger).
+        kind: touchStart / touchMove / touchEnd. fingers: {id: (x, y)} of the fingers that are down AFTER this event."""
+        if getattr(self, "_cdp", None) is None:
+            self._cdp = self.ctx.new_cdp_session(self.page)
+        points = [{"x": x, "y": y, "id": i} for i, (x, y) in fingers.items()]
+        self._cdp.send("Input.dispatchTouchEvent", {"type": kind, "touchPoints": points})
 
     def another_tab(self):
         """A second page in the SAME browser context (same origin, same localStorage): what a second tab of the app is.
@@ -233,6 +243,10 @@ class Ui:
         cell = CELL * self.zoom_pct() / 100
         return ox + x0 * cell, oy + y0 * cell, ox + (x1 + 1) * cell, oy + (y1 + 1) * cell
 
+    def scroll_body_to(self, top):
+        """Scroll the page body (the single column of a phone: canvas, toolbar, panels) to `top`; 'end' for the bottom."""
+        self.page.evaluate("t => { const b = document.querySelector('.body'); b.scrollTop = t === 'end' ? b.scrollHeight : t; }", top)
+
     def scroll_canvas_to_end(self):
         self.page.evaluate("() => { const c = document.querySelector('.center'); c.scrollLeft = c.scrollWidth; c.scrollTop = c.scrollHeight; }")
 
@@ -245,6 +259,11 @@ class Ui:
         SHOTS.mkdir(parents=True, exist_ok=True)
         self.page.screenshot(path=str(SHOTS / f"{self.env.target}_{name}.png"))
 
+    def shot_named(self, name, full_page=False):
+        """A screenshot kept under exactly `name` (no target prefix: dev and prod write the same picture, the later one stays)."""
+        SHOTS.mkdir(parents=True, exist_ok=True)
+        self.page.screenshot(path=str(SHOTS / f"{name}.png"), full_page=full_page)
+
 
 @dataclass
 class Env:
@@ -253,8 +272,8 @@ class Env:
     target: str
     uis: list = None
 
-    def ui(self, width=1280, height=900):
-        ui = Ui(self, width, height)
+    def ui(self, width=1280, height=900, touch=False):
+        ui = Ui(self, width, height, touch)
         self.uis.append(ui)
         return ui
 

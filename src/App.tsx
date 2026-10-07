@@ -13,6 +13,7 @@ import FileMenu from './components/FileMenu';
 import { useAutosave } from './hooks/useAutosave';
 import { useFitView } from './hooks/useFitView';
 import { useNotice } from './hooks/useNotice';
+import { useTwoFingerPan } from './hooks/useTwoFingerPan';
 import { useStorageSync } from './hooks/useStorageSync';
 import { cellsToM2, DEFAULT_FURNITURE_COLOR, FLOORS, m2ToJou, m2ToTsubo, OPENING_MM_RANGE, uid } from './constants';
 import { parseNumberInRange } from './components/NumberField';
@@ -83,6 +84,7 @@ export default function App() {
   const activePlanName = plans.find((p) => p.id === activePlanId)?.name ?? '間取り';
 
   const fitAll = useFitView(centerRef, floorData, doc.settings.cellMm, zoom, setZoom);
+  const panning = useTwoFingerPan(centerRef); // two fingers scroll the canvas (one finger is for drawing)
 
   // outer-wall cells of the OTHER floor, shown as a ghost for alignment
   const ghostWallCells: CellKey[] = (() => {
@@ -440,6 +442,7 @@ export default function App() {
             furniture={furnitureList}
             selectedFurnitureId={selectedFurnitureId}
             furnitureArmed={furnitureArmed}
+            panning={panning}
             onSelectRoom={(id) => {
               setSelectedRoomId(id);
               setSelectedOpeningId(null);

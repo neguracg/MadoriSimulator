@@ -1,3 +1,4 @@
+// @owns 間取り図(キャンバス)の描画と、その上のマウス/タッチ操作（範囲選択・部屋の移動・辺/角ハンドル・ドア/窓・家具のドラッグ）
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BASE_CELL_PX, DOOR_COLOR, GRID_H, GRID_W, WINDOW_COLOR, cellsToM2, m2ToJou } from '../constants';
 import { cellKey, parseCell, type CellAction, type CellKey, type FloorData, type Furniture, type Mode, type Opening, type RoomType, type Side } from '../types';
@@ -22,6 +23,7 @@ interface Props {
   furniture: Furniture[];
   selectedFurnitureId: string | null;
   furnitureArmed: boolean;
+  panning?: boolean; // two fingers are scrolling the canvas: the gesture one finger had begun is dropped, no new one starts
   onSelectRoom: (id: string | null) => void;
   onPendingChange: (cells: CellKey[]) => void;
   onExpand: (cells: CellKey[]) => void;
@@ -151,6 +153,24 @@ export default function Canvas(props: Props) {
   const dragBaseCells = useRef<CellKey[]>([]);
   const movedRef = useRef(false);
 
+  // Two fingers began to scroll the canvas (hooks/useTwoFingerPan): whatever the first finger had started (rubber band,
+  // room move, handle, door/window, furniture) is dropped without being committed.
+  useEffect(() => {
+    if (!props.panning) return;
+    setRubber(null);
+    setMoveDrag(null);
+    setHandleDrag(null);
+    setHandlePreview(null);
+    setOpeningDrag(null);
+    setOpeningDragPos(null);
+    setFurnCreate(null);
+    setFurnLive(null);
+    furnDragRef.current = null;
+    furnMovedRef.current = false;
+    setFurnDragging(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.panning]);
+
   const mmFromEvent = (e: { clientX: number; clientY: number }) => {
     const { px, py } = ptFromEvent(e);
     return { mx: px * cellMm, my: py * cellMm };
@@ -170,7 +190,7 @@ export default function Canvas(props: Props) {
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0 || handleDrag) return;
+    if (e.button !== 0 || handleDrag || props.panning) return;
     // placing a door/window: click confirms position on the nearest wall
     if (placingOpening) {
       const { px, py } = ptFromEvent(e);
@@ -213,6 +233,7 @@ export default function Canvas(props: Props) {
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
+    if (props.panning) return;
     if (placingOpening) {
       const { px, py } = ptFromEvent(e);
       setPlaceGhost(nearestWall(px, py));
@@ -232,6 +253,7 @@ export default function Canvas(props: Props) {
   };
 
   const onPointerUp = () => {
+    if (props.panning) return;
     if (furnCreate) {
       const x = Math.min(furnCreate.sx, furnCreate.cx);
       const y = Math.min(furnCreate.sy, furnCreate.cy);
