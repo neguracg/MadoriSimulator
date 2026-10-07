@@ -21,3 +21,10 @@ npm-debug.log*
 
 # data
 data/
+
+# python cache (scripts/)
+__pycache__/
+*.pyc
+
+# screenshots written by scripts/ui_check.py (regenerated on every run; hand the local files over when needed)
+docs/shots/
