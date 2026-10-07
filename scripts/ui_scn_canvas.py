@@ -223,3 +223,34 @@ def sc_delete_room_removes_its_door(env):
     ui.select_room_at(6, 3)
     ui.key("Delete")
     ui.wait_until(lambda: len(ui.floor()["openings"]) == 0, "最後の部屋を消したら共有壁のドアも消える")
+
+
+def sc_toolbar_adds_door_and_window(env):
+    """F4: the toolbar button opens the same door/window dialog as the room's context menu (reachable without a right click); it is for edit mode, like the other creation buttons."""
+    ui = env.ui()
+    ui.open()
+    ui.make_room(2, 2, 7, 6, "A")  # x 2..7, y 2..6
+    btn = ui.page.locator(".toolbar button", has_text="ドア／窓を追加")
+    check(btn.count() == 1, "ツールバーにドア／窓の追加ボタンが無い")
+    btn.click()
+    ui.page.locator(".size-grid").wait_for()
+    ui.page.locator(".size-grid button").first.click()
+    x, y = ui.grid(4.5, 2)  # the top wall above cell (4,2)
+    ui.page.mouse.move(x, y + 2)
+    ui.page.mouse.click(x, y + 2)
+    ui.wait_until(lambda: len(ui.floor()["openings"]) == 1, "ドアの追加")
+    door = ui.floor()["openings"][0]
+    check((door["kind"], door["cx"], door["cy"], door["side"]) == ("door", 4, 2, "N"), f"ドアの位置: {door}")
+    btn.click()  # a window this time
+    ui.page.locator(".kind-toggle button", has_text="窓").click()
+    ui.page.locator(".size-grid button").first.click()
+    x, y = ui.grid(4.5, 7)  # the bottom wall below cell (4,6)
+    ui.page.mouse.move(x, y - 2)
+    ui.page.mouse.click(x, y - 2)
+    ui.wait_until(lambda: len(ui.floor()["openings"]) == 2, "窓の追加")
+    win = ui.floor()["openings"][1]
+    check((win["kind"], win["cx"], win["cy"], win["side"]) == ("window", 4, 6, "S"), f"窓の位置: {win}")
+    hint = ui.page.locator(".mode-hint").text_content() or ""
+    check("ドア／窓を追加" in hint and "右クリック" in hint, f"ヒント文にドア/窓・右クリックの案内が無い: {hint}")
+    ui.page.locator("button.mode-btn", has_text="移動").click()
+    check(btn.is_disabled(), "移動モードでもドア／窓の追加ボタンが押せる")

@@ -54,6 +54,7 @@ from ui_scn_canvas import (
     sc_opening_drag_undo_count,
     sc_paste_room_at_edge_keeps_shape,
     sc_reload_keeps_document,
+    sc_toolbar_adds_door_and_window,
 )
 from ui_scn_document import (
     sc_corrupt_storage_set_aside,
@@ -263,6 +264,7 @@ SCENARIOS = [
     Scenario("duplicate_plan", "F1", sc_duplicate_plan),
     Scenario("file_menu_export_backup_import", "F3", sc_file_menu_export_backup_import),
     Scenario("door_follows_edge_drag", "F6", sc_door_follows_edge_drag),
+    Scenario("toolbar_adds_door_and_window", "F4", sc_toolbar_adds_door_and_window),
     Scenario("delete_room_removes_its_door", "B11", sc_delete_room_removes_its_door),
     Scenario("modal_blocks_shortcuts", "B6 F7", sc_modal_blocks_shortcuts),
     Scenario("typing_is_one_undo_step", "B7", sc_typing_is_one_undo_step),

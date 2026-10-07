@@ -387,6 +387,7 @@ export default function App() {
             canUndo={canUndo}
             canRedo={canRedo}
             onCreateRoom={() => pendingCells.length > 0 && setDialogOpen(true)}
+            onAddOpening={() => setOpeningDialogOpen(true)}
             onArmFurniture={() => {
               setFurnitureArmed((a) => !a);
               setCellAction('none');

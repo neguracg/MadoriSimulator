@@ -9,6 +9,7 @@ interface Props {
   canUndo: boolean;
   canRedo: boolean;
   onCreateRoom: () => void;
+  onAddOpening: () => void; // opens the door/window dialog (the same one as the room's context menu)
   onArmFurniture: () => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -24,7 +25,7 @@ export default function Toolbar(props: Props) {
         ? '追加するマスをドラッグ／クリックで選んでください。'
         : props.cellAction === 'shrink'
           ? '削除するマスをドラッグ／クリックで選んでください。'
-          : '空きマスをドラッグして範囲選択 →「部屋を作成」。部屋をクリックで選択し、角・辺をつかんで伸縮。';
+          : '空きマスをドラッグして範囲選択 →「部屋を作成」。部屋をクリックで選択し、角・辺をつかんで伸縮。ドア／窓は「🚪 ドア／窓を追加」から（部屋を右クリックでも追加できます）。';
 
   return (
     <div className="toolbar">
@@ -59,6 +60,13 @@ export default function Toolbar(props: Props) {
           title="押してからキャンバスをドラッグして家具を作成"
         >
           🪑 家具を作成
+        </button>
+        <button
+          disabled={props.mode !== 'edit'}
+          onClick={props.onAddOpening}
+          title="幅を選んで、壁の上に置く（部屋を右クリックからも追加できます）"
+        >
+          🚪 ドア／窓を追加
         </button>
         <span className="sep" />
         <button disabled={!props.canUndo} onClick={props.onUndo} title="Ctrl+Z">↶ Undo</button>
