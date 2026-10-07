@@ -22,6 +22,9 @@ npm-debug.log*
 # data
 data/
 
+# TypeScript incremental build info (rewritten by every `tsc -b`, so tracking it makes a diff after each build)
+tsconfig.tsbuildinfo
+
 # python cache (scripts/)
 __pycache__/
 *.pyc
