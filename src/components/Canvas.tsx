@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BASE_CELL_PX, DOOR_COLOR, GRID_H, GRID_W, WINDOW_COLOR, cellsToM2, m2ToJou } from '../constants';
 import { cellKey, parseCell, type CellAction, type CellKey, type FloorData, type Furniture, type Mode, type Opening, type RoomType, type Side } from '../types';
-import { applyRunDrag, bbox, boundaryRuns, boundarySegments, edgeSegment, neighborCell, unionBoundary, type Run } from '../utils/geometry';
+import { applyRunDrag, bbox, boundaryRuns, boundarySegments, cellOwnerMap, edgeSegment, unionBoundary, type Run } from '../utils/geometry';
+import { useLiveValue } from '../hooks/useLiveValue';
+import { linkedToRoomMove } from '../state/docOps';
 
 interface Props {
   floorData: FloorData;
@@ -84,13 +86,7 @@ export default function Canvas(props: Props) {
     return m;
   }, [roomTypes]);
 
-  const cellOwner = useMemo(() => {
-    const m = new Map<CellKey, string>();
-    for (const r of [...floorData.rooms].sort((a, b) => a.z - b.z)) {
-      for (const c of r.cells) m.set(c, r.id); // higher z overwrites
-    }
-    return m;
-  }, [floorData.rooms]);
+  const cellOwner = useMemo(() => cellOwnerMap(floorData.rooms), [floorData.rooms]);
 
   const selectedRoom = floorData.rooms.find((r) => r.id === selectedRoomId) ?? null;
 
@@ -137,13 +133,14 @@ export default function Canvas(props: Props) {
   const [handleDrag, setHandleDrag] = useState<
     ({ kind: 'edge'; run: Run } | { kind: 'corner'; ax: number; ay: number }) | null
   >(null);
-  const [handlePreview, setHandlePreview] = useState<CellKey[] | null>(null);
+  // Live values of a drag in progress: [state for drawing, ref that pointerup commits from, setter for both].
+  const [handlePreview, handlePreviewRef, setHandlePreview] = useLiveValue<CellKey[]>();
   const [placeGhost, setPlaceGhost] = useState<{ cx: number; cy: number; side: Side } | null>(null);
   const [openingDrag, setOpeningDrag] = useState<{ id: string } | null>(null);
-  const [openingDragPos, setOpeningDragPos] = useState<{ cx: number; cy: number; side: Side } | null>(null);
+  const [openingDragPos, openingDragPosRef, setOpeningDragPos] = useLiveValue<{ cx: number; cy: number; side: Side }>();
   // furniture (free mm-based rectangles)
   const [furnCreate, setFurnCreate] = useState<{ sx: number; sy: number; cx: number; cy: number } | null>(null);
-  const [furnLive, setFurnLive] = useState<{ id: string; x: number; y: number; w: number; h: number } | null>(null);
+  const [furnLive, furnLiveRef, setFurnLive] = useLiveValue<{ id: string; x: number; y: number; w: number; h: number }>();
   const [furnDragging, setFurnDragging] = useState(false);
   const furnDragRef = useRef<
     | { kind: 'move'; id: string; startMx: number; startMy: number; origX: number; origY: number }
@@ -283,10 +280,9 @@ export default function Canvas(props: Props) {
       }
     };
     const onUp = () => {
-      setHandlePreview((prev) => {
-        if (prev && prev.length > 0 && selectedRoom) props.onSetShape(selectedRoom.id, prev);
-        return null;
-      });
+      const prev = handlePreviewRef.current;
+      if (prev && prev.length > 0 && selectedRoom) props.onSetShape(selectedRoom.id, prev);
+      setHandlePreview(null);
       setHandleDrag(null);
     };
     window.addEventListener('pointermove', onMove);
@@ -307,10 +303,9 @@ export default function Canvas(props: Props) {
       if (w) setOpeningDragPos({ cx: w.cx, cy: w.cy, side: w.side });
     };
     const onUp = () => {
-      setOpeningDragPos((pos) => {
-        if (pos && openingDrag) props.onPatchOpening(openingDrag.id, pos);
-        return null;
-      });
+      const pos = openingDragPosRef.current;
+      if (pos) props.onPatchOpening(openingDrag.id, pos);
+      setOpeningDragPos(null);
       setOpeningDrag(null);
     };
     window.addEventListener('pointermove', onMove);
@@ -327,24 +322,24 @@ export default function Canvas(props: Props) {
     if (!furnDragging) return;
     const onMove = (e: PointerEvent) => {
       const d = furnDragRef.current;
-      if (!d) return;
+      const cur = furnLiveRef.current;
+      if (!d || !cur) return;
       furnMovedRef.current = true;
       const { mx, my } = mmFromEvent(e);
       if (d.kind === 'move') {
-        setFurnLive((f) => (f ? { ...f, x: d.origX + (mx - d.startMx), y: d.origY + (my - d.startMy) } : f));
+        setFurnLive({ ...cur, x: d.origX + (mx - d.startMx), y: d.origY + (my - d.startMy) });
       } else {
         const x = Math.min(d.fixedMx, mx);
         const y = Math.min(d.fixedMy, my);
         const w = Math.max(20, Math.abs(mx - d.fixedMx));
         const h = Math.max(20, Math.abs(my - d.fixedMy));
-        setFurnLive((f) => (f ? { ...f, x, y, w, h } : f));
+        setFurnLive({ ...cur, x, y, w, h });
       }
     };
     const onUp = () => {
-      setFurnLive((f) => {
-        if (f && furnMovedRef.current) props.onPatchFurniture(f.id, { x: f.x, y: f.y, w: f.w, h: f.h });
-        return null;
-      });
+      const f = furnLiveRef.current;
+      if (f && furnMovedRef.current) props.onPatchFurniture(f.id, { x: f.x, y: f.y, w: f.w, h: f.h });
+      setFurnLive(null);
       furnDragRef.current = null;
       furnMovedRef.current = false;
       setFurnDragging(false);
@@ -376,35 +371,9 @@ export default function Canvas(props: Props) {
 
   const moveOffset = moveDrag ? { dx: moveDrag.cur.x - moveDrag.start.x, dy: moveDrag.cur.y - moveDrag.start.y } : null;
 
-  // openings / furniture linked to the room currently being move-dragged, so the
-  // preview can offset them the same way translateRoom will on drop. Judgement
-  // mirrors docOps.translateRoom, using the (not-yet-moved) floorData + cellOwner.
-  const linkedOpeningIds = (() => {
-    if (!moveDrag) return null;
-    const R = moveDrag.roomId;
-    const ids = new Set<string>();
-    for (const o of openings) {
-      const a = cellOwner.get(cellKey(o.cx, o.cy)) ?? null;
-      const [nx, ny] = neighborCell(o.cx, o.cy, o.side);
-      const b = cellOwner.get(cellKey(nx, ny)) ?? null;
-      if ((a === R || b === R) && (a === R || a === null) && (b === R || b === null)) ids.add(o.id);
-    }
-    return ids;
-  })();
-
-  const linkedFurnitureIds = (() => {
-    if (!moveDrag) return null;
-    const room = floorData.rooms.find((r) => r.id === moveDrag.roomId);
-    if (!room) return null;
-    const cellSet = new Set(room.cells);
-    const ids = new Set<string>();
-    for (const item of furniture) {
-      const ccx = Math.floor((item.x + item.w / 2) / cellMm);
-      const ccy = Math.floor((item.y + item.h / 2) / cellMm);
-      if (cellSet.has(cellKey(ccx, ccy))) ids.add(item.id);
-    }
-    return ids;
-  })();
+  // Openings / furniture that travel with the room being move-dragged: the preview offsets them exactly
+  // as translateRoom will on drop (one shared rule, judged on the not-yet-moved floor).
+  const linked = moveDrag ? linkedToRoomMove(floorData, moveDrag.roomId, cellMm) : null;
 
   // displayed cells per room (apply move offset / handle preview)
   const displayCells = (roomId: string, cells: CellKey[]): { cells: CellKey[]; dx: number; dy: number } => {
@@ -651,7 +620,7 @@ export default function Canvas(props: Props) {
           const live = openingDrag?.id === o.id && openingDragPos ? { ...o, ...openingDragPos } : o;
           const seg = edgeSegment(live.cx, live.cy, live.side);
           const horiz = live.side === 'N' || live.side === 'S';
-          const moving = !!(moveOffset && linkedOpeningIds?.has(o.id));
+          const moving = !!(moveOffset && linked?.openingIds.has(o.id));
           const mx = ((seg[0] + seg[2]) / 2) * cell + (moving ? moveOffset!.dx * cell : 0);
           const my = ((seg[1] + seg[3]) / 2) * cell + (moving ? moveOffset!.dy * cell : 0);
           const lenPx = Math.min(cell * 3.2, Math.max(cell * 0.5, o.size * pxPerMm));
@@ -729,7 +698,7 @@ export default function Canvas(props: Props) {
         {/* furniture */}
         {furniture.map((f) => {
           const live = furnLive && furnLive.id === f.id ? furnLive : f;
-          const moving = !!(moveOffset && linkedFurnitureIds?.has(f.id));
+          const moving = !!(moveOffset && linked?.furnitureIds.has(f.id));
           const x = live.x * pxPerMm + (moving ? moveOffset!.dx * cell : 0);
           const y = live.y * pxPerMm + (moving ? moveOffset!.dy * cell : 0);
           const w = live.w * pxPerMm;

@@ -10,7 +10,7 @@ import {
   type Settings,
   type Side,
 } from '../types';
-import { connectedComponents, neighborCell } from '../utils/geometry';
+import { cellOwnerMap, connectedComponents, neighborCell } from '../utils/geometry';
 import { GRID_H, GRID_W, nextAutoColor, uid } from '../constants';
 
 function mapFloor(doc: Doc, floor: number, fn: (f: FloorData) => FloorData): Doc {
@@ -93,30 +93,53 @@ export function shrinkRoom(doc: Doc, floor: number, roomId: string, cells: CellK
 }
 
 /**
+ * Doors/windows and furniture that travel with a room when it is moved. The ONE rule, used both by
+ * translateRoom (the commit) and by the canvas (the drag preview). Judged on the state BEFORE the move.
+ *  - An opening travels only when the room owns one side of its edge and the other side is the same room
+ *    or empty (an exterior wall of the room). An opening on a wall shared with another room stays behind.
+ *  - A furniture item travels when its centre cell lies inside the room's cells.
+ */
+export function linkedToRoomMove(
+  f: FloorData,
+  roomId: string,
+  cellMm: number,
+): { openingIds: Set<string>; furnitureIds: Set<string> } {
+  const openingIds = new Set<string>();
+  const furnitureIds = new Set<string>();
+  const room = f.rooms.find((r) => r.id === roomId);
+  if (!room) return { openingIds, furnitureIds };
+  const owner = cellOwnerMap(f.rooms);
+  for (const o of f.openings) {
+    const a = owner.get(cellKey(o.cx, o.cy)) ?? null;
+    const [nx, ny] = neighborCell(o.cx, o.cy, o.side);
+    const b = owner.get(cellKey(nx, ny)) ?? null;
+    if ((a === roomId || b === roomId) && (a === roomId || a === null) && (b === roomId || b === null)) {
+      openingIds.add(o.id);
+    }
+  }
+  const cells = new Set(room.cells);
+  for (const item of f.furniture ?? []) {
+    const ccx = Math.floor((item.x + item.w / 2) / cellMm);
+    const ccy = Math.floor((item.y + item.h / 2) / cellMm);
+    if (cells.has(cellKey(ccx, ccy))) furnitureIds.add(item.id);
+  }
+  return { openingIds, furnitureIds };
+}
+
+/**
  * Move a room by (dx,dy). Overlaps with other rooms are ALLOWED and preserved —
  * they are only resolved later by resolveOverlaps (when leaving move mode).
  * The moved room is brought to the front so it wins on resolution.
  *
- * Wall-hosted openings (doors/windows) and furniture linked to the room move
- * along with it:
- *  - An opening moves only when the moving room owns one side of its edge and
- *    the other side is either the moving room too or empty (i.e. an exterior
- *    wall of the room). An opening shared with another room's wall is left
- *    behind with that other room.
- *  - A furniture item moves when its center cell falls inside the room's
- *    cells (as they were BEFORE the move).
- * All judgements use the room/owner state prior to the move.
+ * The openings and furniture listed by linkedToRoomMove move along with it.
  */
 export function translateRoom(doc: Doc, floor: number, roomId: string, dx: number, dy: number): Doc {
   return mapFloor(doc, floor, (f) => {
     const room = f.rooms.find((r) => r.id === roomId);
     if (!room) return f;
     const maxZ = Math.max(0, ...f.rooms.map((r) => r.z));
-    const beforeCells = new Set(room.cells); // pre-move cells, for furniture containment
-    const owner = new Map<CellKey, string>();
-    for (const r of [...f.rooms].sort((a, b) => a.z - b.z)) {
-      for (const c of r.cells) owner.set(c, r.id); // higher z overwrites, mirrors Canvas cellOwner
-    }
+    const cellMm = doc.settings.cellMm;
+    const { openingIds, furnitureIds } = linkedToRoomMove(f, roomId, cellMm); // judged before the move
     const clampX = (x: number) => Math.min(GRID_W - 1, Math.max(0, x));
     const clampY = (y: number) => Math.min(GRID_H - 1, Math.max(0, y));
 
@@ -130,22 +153,15 @@ export function translateRoom(doc: Doc, floor: number, roomId: string, dx: numbe
     ];
     const rooms = f.rooms.map((r) => (r.id === roomId ? { ...r, z: maxZ + 1, cells: moved } : r));
 
-    const openings = f.openings.map((o) => {
-      const a = owner.get(cellKey(o.cx, o.cy)) ?? null;
-      const [nx, ny] = neighborCell(o.cx, o.cy, o.side);
-      const b = owner.get(cellKey(nx, ny)) ?? null;
-      const linked = (a === roomId || b === roomId) && (a === roomId || a === null) && (b === roomId || b === null);
-      if (!linked) return o;
-      return { ...o, cx: clampX(o.cx + dx), cy: clampY(o.cy + dy) };
-    });
+    const openings = f.openings.map((o) =>
+      openingIds.has(o.id) ? { ...o, cx: clampX(o.cx + dx), cy: clampY(o.cy + dy) } : o,
+    );
 
-    const cellMm = doc.settings.cellMm;
-    const furniture = (f.furniture ?? []).map((item) => {
-      const ccx = Math.floor((item.x + item.w / 2) / cellMm);
-      const ccy = Math.floor((item.y + item.h / 2) / cellMm);
-      if (!beforeCells.has(cellKey(ccx, ccy))) return item;
-      return { ...item, x: Math.max(0, item.x + dx * cellMm), y: Math.max(0, item.y + dy * cellMm) };
-    });
+    const furniture = (f.furniture ?? []).map((item) =>
+      furnitureIds.has(item.id)
+        ? { ...item, x: Math.max(0, item.x + dx * cellMm), y: Math.max(0, item.y + dy * cellMm) }
+        : item,
+    );
 
     return { ...f, rooms, openings, furniture };
   });

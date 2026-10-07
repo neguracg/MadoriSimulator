@@ -19,6 +19,15 @@ export function boundarySegments(cells: Iterable<CellKey>): Segment[] {
   return segs;
 }
 
+/** Which room owns each cell. Higher z wins, i.e. the room drawn on top (equal z: later in the list). */
+export function cellOwnerMap(rooms: Room[]): Map<CellKey, string> {
+  const owner = new Map<CellKey, string>();
+  for (const r of [...rooms].sort((a, b) => a.z - b.z)) {
+    for (const c of r.cells) owner.set(c, r.id);
+  }
+  return owner;
+}
+
 /** Union outline of all rooms (the house outer wall). */
 export function unionBoundary(rooms: Room[]): Segment[] {
   const all = new Set<CellKey>();
