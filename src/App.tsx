@@ -149,8 +149,24 @@ export default function App() {
     }
   };
 
+  // A dialog or the context menu is open: it owns the keyboard. No shortcut reaches the page behind it
+  // (Delete used to delete the room behind the share dialog), and Esc closes it.
+  // A NEW dialog or menu must be added to overlayOpen and to closeOverlays.
+  const overlayOpen = dialogOpen || settingsOpen || shareOpen || openingDialogOpen || menu !== null;
+  const closeOverlays = () => {
+    setDialogOpen(false);
+    setSettingsOpen(false);
+    setShareOpen(false);
+    setOpeningDialogOpen(false);
+    setMenu(null);
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (overlayOpen) {
+        if (e.key === 'Escape' && !e.isComposing) closeOverlays(); // also from inside a field of the dialog
+        return;
+      }
       const t = e.target as HTMLElement;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
       const ctrl = e.ctrlKey || e.metaKey;
@@ -222,7 +238,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo, commit, floor, activePlanId, selectedRoomId, selectedOpeningId, selectedFurnitureId, presentRef]);
+  }, [undo, redo, commit, floor, activePlanId, selectedRoomId, selectedOpeningId, selectedFurnitureId, presentRef, overlayOpen]);
 
   const addType = (name: string): string => {
     const { doc: nd, type } = ops.addRoomType(presentRef.current, name);

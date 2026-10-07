@@ -53,7 +53,6 @@ export default function RoomDialog(props: Props) {
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submit();
-              if (e.key === 'Escape') props.onCancel();
             }}
           />
         </label>
