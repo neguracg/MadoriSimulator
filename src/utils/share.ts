@@ -1,4 +1,6 @@
+// @owns 間取りの共有リンク（URL の組み立てと、URL からの読み取り）
 import LZString from 'lz-string';
+import { PUBLIC_APP_URL } from '../constants';
 import type { Doc } from '../types';
 import { acceptDoc } from '../state/migrate';
 
@@ -26,9 +28,24 @@ export function decodePlan(s: string): { name: string; doc: Doc } | null {
   return null;
 }
 
+/** The part of `location` the share address depends on (tests pass a plain object). */
+export type PageLocation = Pick<Location, 'protocol' | 'hostname' | 'origin' | 'pathname'>;
+
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+
+/** True when the page is served from this very machine (localhost, loopback, a file): a link to it opens nothing on another device. */
+export function isLocalPage(loc: PageLocation = location): boolean {
+  return loc.protocol === 'file:' || LOCAL_HOSTNAMES.has(loc.hostname);
+}
+
+/** The address a share link is built on: the published app when this page is a local one, otherwise this page itself. */
+export function shareBase(loc: PageLocation = location): string {
+  return isLocalPage(loc) ? PUBLIC_APP_URL : `${loc.origin}${loc.pathname}`;
+}
+
 /** Full shareable URL with the plan embedded in the hash. */
-export function buildShareUrl(name: string, doc: Doc): string {
-  return `${location.origin}${location.pathname}#p=${encodePlan(name, doc)}`;
+export function buildShareUrl(name: string, doc: Doc, loc: PageLocation = location): string {
+  return `${shareBase(loc)}#p=${encodePlan(name, doc)}`;
 }
 
 /** If the current URL carries a shared plan, decode it. */

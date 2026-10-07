@@ -8,8 +8,10 @@
 
 
 import json
+import re
 import subprocess
 import time
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
@@ -38,6 +40,18 @@ def check(cond, msg):
 def check_infra(cond, msg):
     if not cond:
         raise InfraError(msg)
+
+
+def public_app_url():
+    """PUBLIC_APP_URL of src/constants.ts: the one line that holds the published address (and so the production base path)."""
+    m = re.search(r"PUBLIC_APP_URL\s*=\s*'([^']+)'", (ROOT / "src" / "constants.ts").read_text(encoding="utf-8"))
+    check_infra(m is not None, "src/constants.ts に PUBLIC_APP_URL が見つかりません")
+    return m.group(1)
+
+
+def app_base_path():
+    """The base path the production build is served under ('/MadoriSimulator/'): vite.config.ts takes it from the same line."""
+    return urllib.parse.urlparse(public_app_url()).path
 
 
 # --------------------------------------------------------------------------- browser helpers

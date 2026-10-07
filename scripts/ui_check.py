@@ -11,6 +11,7 @@
 サーバーはこのスクリプトが自分で起動し、終了時（失敗・Ctrl+C でも）必ず止める。手で起動した物は使わない。
   dev : npx vite --port 4178 --strictPort（env PORT=4178 で自動オープンを抑止）  -> http://localhost:4178/
   prod: npx vite preview --port 4179 --strictPort --base /MadoriSimulator/       -> http://localhost:4179/MadoriSimulator/
+        (the base is read from PUBLIC_APP_URL in src/constants.ts, the same line vite.config.ts uses)
 ブラウザの起動条件は C:/Claude/101_KaihatsuHyoujun/shiken/tools/browser_check.py と同じ
 （headless・channel="chrome"・1280x900・ja-JP・Asia/Tokyo・light・reduced motion）。失敗しても別経路へは落とさない。
 シナリオ本体は ui_scn_*.py（概念ごと）、共通部品は ui_lib.py。実行する一覧（SCENARIOS）はこのファイルの1か所。
@@ -37,7 +38,7 @@ try:
 except Exception:
     pass
 
-from ui_lib import ROOT, SHOTS, Env, InfraError, check_infra
+from ui_lib import ROOT, SHOTS, Env, InfraError, app_base_path, check_infra
 from ui_scn_canvas import (
     sc_corner_drag_undo_count,
     sc_delete_room_removes_its_door,
@@ -71,13 +72,14 @@ from ui_scn_input import (
     sc_settings_number_fields,
     sc_typing_is_one_undo_step,
 )
+from ui_scn_plans import sc_share_link_uses_public_base
 
 
 NPX = shutil.which("npx.cmd") or shutil.which("npx") or "npx"
+BASE = app_base_path()  # vite.config.ts gives the production build this base only for "build"; preview must be told the same one
 TARGETS = {
     "dev": dict(port=4178, path="/", cmd=["vite", "--port", "4178", "--strictPort"], env={"PORT": "4178"}),
-    # vite.config.ts gives the production build the base /MadoriSimulator/ only for "build"; preview must be told the same base
-    "prod": dict(port=4179, path="/MadoriSimulator/", cmd=["vite", "preview", "--port", "4179", "--strictPort", "--base", "/MadoriSimulator/"], env={}),
+    "prod": dict(port=4179, path=BASE, cmd=["vite", "preview", "--port", "4179", "--strictPort", "--base", BASE], env={}),
 }
 
 
@@ -243,6 +245,7 @@ SCENARIOS = [
     Scenario("import_project_file_adds_all_plans", "B2", sc_import_project_file_adds_all_plans),
     Scenario("import_legacy_and_bad_file", "B1 B2", sc_import_legacy_and_bad_file),
     Scenario("save_failure_shows_banner", "2章", sc_save_failure_shows_banner),
+    Scenario("share_link_uses_public_base", "B9", sc_share_link_uses_public_base),
     Scenario("reload_in_move_mode_settles_overlaps", "B12", sc_reload_in_move_mode_settles_overlaps),
     Scenario("reload_keeps_document", "-", sc_reload_keeps_document),
     Scenario("edge_drag_undo_count", "B5", sc_edge_drag_undo_count),

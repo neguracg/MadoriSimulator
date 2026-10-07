@@ -16,7 +16,7 @@ import { useHistory } from './state/useHistory';
 import { mergeKeyFor } from './state/mergeKeys';
 import * as ops from './state/docOps';
 import { loadProject, makePlan, parseImportFile, saveProject, type Plan, type Project } from './state/projectStore';
-import { buildShareUrl, clearShareHash, readSharedFromHash } from './utils/share';
+import { buildShareUrl, clearShareHash, isLocalPage, readSharedFromHash } from './utils/share';
 
 export default function App() {
   const [boot] = useState(loadProject);
@@ -491,6 +491,7 @@ export default function App() {
         <ShareDialog
           url={buildShareUrl(activePlanName, doc)}
           planName={activePlanName}
+          publicBase={isLocalPage()}
           onClose={() => setShareOpen(false)}
         />
       )}

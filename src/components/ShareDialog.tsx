@@ -4,10 +4,11 @@ import QRCode from 'qrcode';
 interface Props {
   url: string;
   planName: string;
+  publicBase: boolean; // the page is a local one: the link was made on the published address instead of this page's
   onClose: () => void;
 }
 
-export default function ShareDialog({ url, planName, onClose }: Props) {
+export default function ShareDialog({ url, planName, publicBase, onClose }: Props) {
   const [qr, setQr] = useState<string>('');
   const [copied, setCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -38,6 +39,7 @@ export default function ShareDialog({ url, planName, onClose }: Props) {
         <p className="modal-area">
           このリンク/QRを送ると、相手の端末で同じ間取りが新しいタブとして開きます（サーバー不要）。
         </p>
+        {publicBase && <p className="op-hint">ローカル起動中のため公開版のURLで作成しています</p>}
         {qr && (
           <div className="qr-wrap">
             <img src={qr} alt="QR" width={200} height={200} />

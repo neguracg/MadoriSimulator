@@ -9,6 +9,13 @@ export const BASE_CELL_PX = 22; // base pixel size of one 455mm cell
 
 export const FLOORS = [1, 2] as const;
 
+// Where the app is published (GitHub Pages). Everything that depends on this address reads it from here:
+//  - vite.config.ts takes the production build's base path from it (APP_BASE_PATH);
+//  - a share link made from a local run points here (utils/share.ts): a link to localhost opens nothing on another device;
+//  - scripts/ui_lib.py reads this very line to start the preview server under the same base path.
+export const PUBLIC_APP_URL = 'https://neguracg.github.io/MadoriSimulator/';
+export const APP_BASE_PATH = new URL(PUBLIC_APP_URL).pathname; // '/MadoriSimulator/'
+
 export const DEFAULT_TYPES: RoomType[] = [
   { id: 'living', name: '居室', color: '#7FB3D5' },
   { id: 'ldk', name: 'LDK', color: '#F5B041' },
