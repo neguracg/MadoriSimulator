@@ -12,6 +12,7 @@ import FurniturePanel from './components/FurniturePanel';
 import { cellsToM2, DEFAULT_FURNITURE_COLOR, FLOORS, m2ToJou, m2ToTsubo, uid } from './constants';
 import type { CellAction, CellKey, Doc, Furniture, Mode, Room, RoomType } from './types';
 import { useHistory } from './state/useHistory';
+import { mergeKeyFor } from './state/mergeKeys';
 import * as ops from './state/docOps';
 import { loadProject, makePlan, parseImportFile, saveProject, type Plan, type Project } from './state/projectStore';
 import { buildShareUrl, clearShareHash, readSharedFromHash } from './utils/share';
@@ -407,7 +408,9 @@ export default function App() {
           {selectedFurniture ? (
             <FurniturePanel
               item={selectedFurniture}
-              onPatch={(patch) => commit((d) => ops.patchFurniture(d, floor, selectedFurniture.id, patch))}
+              onPatch={(patch) =>
+                commit((d) => ops.patchFurniture(d, floor, selectedFurniture.id, patch), mergeKeyFor('furniture', selectedFurniture.id, patch))
+              }
               onDelete={() => {
                 commit((d) => ops.removeFurniture(d, floor, selectedFurniture.id));
                 setSelectedFurnitureId(null);
@@ -419,7 +422,9 @@ export default function App() {
               roomTypes={doc.roomTypes}
               cellMm={doc.settings.cellMm}
               cellAction={cellAction}
-              onPatch={(patch) => selectedRoomId && commit((d) => ops.patchRoom(d, floor, selectedRoomId, patch))}
+              onPatch={(patch) =>
+                selectedRoomId && commit((d) => ops.patchRoom(d, floor, selectedRoomId, patch), mergeKeyFor('room', selectedRoomId, patch))
+              }
               onAddType={addType}
               onDelete={deleteSelected}
               onSetCellAction={setCellAction}
@@ -448,9 +453,9 @@ export default function App() {
         <SettingsDialog
           roomTypes={doc.roomTypes}
           settings={doc.settings}
-          onPatchType={(id, patch) => commit((d) => ops.updateRoomType(d, id, patch))}
+          onPatchType={(id, patch) => commit((d) => ops.updateRoomType(d, id, patch), mergeKeyFor('type', id, patch))}
           onAddType={(name) => addType(name)}
-          onPatchSettings={(patch) => commit((d) => ops.updateSettings(d, patch))}
+          onPatchSettings={(patch) => commit((d) => ops.updateSettings(d, patch), mergeKeyFor('settings', 'doc', patch))}
           onClose={() => setSettingsOpen(false)}
         />
       )}
