@@ -41,6 +41,12 @@ export const DEFAULT_WINDOW_SIZE = 1650;
 
 export const DEFAULT_FURNITURE_COLOR = '#8a9ba8';
 
+// Valid size limits (mm). normalizeDoc accepts/rejects stored data by these; numeric inputs should share them.
+export const CELL_MM_RANGE = { min: 100, max: 1000 } as const;
+export const WALL_MM_RANGE = { min: 50, max: 400 } as const;
+export const OPENING_MM_RANGE = { min: 100, max: 4000 } as const;
+export const FURNITURE_MIN_MM = 20;
+
 export function emptyFloor() {
   return { rooms: [], openings: [], furniture: [] };
 }
