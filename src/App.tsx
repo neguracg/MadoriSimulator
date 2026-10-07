@@ -9,14 +9,33 @@ import PlanTabs from './components/PlanTabs';
 import ShareDialog from './components/ShareDialog';
 import OpeningDialog from './components/OpeningDialog';
 import FurniturePanel from './components/FurniturePanel';
+import FileMenu from './components/FileMenu';
+import { useNotice } from './hooks/useNotice';
 import { cellsToM2, DEFAULT_FURNITURE_COLOR, FLOORS, m2ToJou, m2ToTsubo, OPENING_MM_RANGE, uid } from './constants';
 import { parseNumberInRange } from './components/NumberField';
 import type { CellAction, CellKey, Doc, Furniture, Mode, Room, RoomType } from './types';
 import { useHistory } from './state/useHistory';
 import { mergeKeyFor } from './state/mergeKeys';
 import * as ops from './state/docOps';
-import { addPlans, buildProject, copyPlan, loadProject, makePlan, parseImportFile, saveProject, type Plan } from './state/projectStore';
+import {
+  addPlans,
+  backupFileName,
+  buildProject,
+  copyPlan,
+  downloadText,
+  exportProject,
+  loadProject,
+  makePlan,
+  parseImportFile,
+  saveProject,
+  type Plan,
+} from './state/projectStore';
 import { buildShareUrl, clearShareHash, isLocalPage, readSharedFromHash } from './utils/share';
+
+/** The open context menu or dropdown. A file menu hangs under its button (x = the side it is anchored to). */
+type MenuState =
+  | { kind: 'room' | 'opening'; id: string; x: number; y: number }
+  | { kind: 'file'; x: number; y: number; alignRight: boolean };
 
 export default function App() {
   const [boot] = useState(loadProject);
@@ -26,6 +45,8 @@ export default function App() {
   const [plans, setPlans] = useState<Plan[]>(boot.plans);
   const [activePlanId, setActivePlanId] = useState(boot.activePlanId);
   const [saveError, setSaveError] = useState(false); // the last autosave was refused by the browser
+  const [notice, notify] = useNotice(); // a short message that goes away by itself
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [floor, setFloor] = useState(1);
   const [mode, setModeState] = useState<Mode>('edit');
@@ -47,7 +68,7 @@ export default function App() {
     | { kind: 'room'; room: Room; type: RoomType | null; srcFloor: number; srcPlan: string }
     | { kind: 'furniture'; item: Furniture; srcFloor: number; srcPlan: string };
   const clipboardRef = useRef<Clip | null>(null);
-  const [menu, setMenu] = useState<{ kind: 'room' | 'opening'; id: string; x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<MenuState | null>(null);
 
   const floorData = doc.floors[floor];
   const furnitureList = floorData.furniture ?? [];
@@ -269,23 +290,20 @@ export default function App() {
     }
   };
 
-  const exportJson = () => {
-    const name = plans.find((p) => p.id === activePlanId)?.name ?? 'madori';
-    const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${name}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  // ---- the file menu: write out this plan / back up everything / read a file in
+  const exportPlan = () => downloadText(`${activePlanName}.json`, JSON.stringify(doc, null, 2));
+  const backupAll = () => downloadText(backupFileName(), exportProject(buildProject(plans, activePlanId, doc)));
   // An imported file is ADDED as new tab(s) and selected; the plan being edited is never replaced.
   const importJson = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
       const added = parseImportFile(String(reader.result), file.name);
-      if (added.length === 0) alert('JSONの読み込みに失敗しました。');
-      else appendPlans(added);
+      if (added.length === 0) {
+        alert('JSONの読み込みに失敗しました。');
+        return;
+      }
+      appendPlans(added);
+      notify(`${added.length}件の間取りを追加しました`);
     };
     reader.onerror = () => alert('JSONの読み込みに失敗しました。');
     reader.readAsText(file);
@@ -313,25 +331,38 @@ export default function App() {
           </div>
           <button onClick={() => setSettingsOpen(true)}>⚙ 設定</button>
           <button onClick={() => setShareOpen(true)}>🔗 共有</button>
-          <button onClick={exportJson}>エクスポート</button>
-          <label className="file-btn">
-            インポート
-            <input
-              type="file"
-              accept="application/json"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) importJson(f);
-                e.target.value = '';
-              }}
-            />
-          </label>
+          <button
+            aria-haspopup="menu"
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              const alignRight = r.left > window.innerWidth / 2; // a button on the right half: the menu grows leftwards
+              setMenu({ kind: 'file', x: alignRight ? r.right : r.left, y: r.bottom + 4, alignRight });
+            }}
+          >
+            💾 ファイル ▾
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            hidden
+            accept="application/json,.json"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) importJson(f);
+              e.target.value = '';
+            }}
+          />
         </div>
       </header>
 
       {saveError && (
         <div className="save-error" role="alert">
           保存に失敗しました。ファイルへ書き出して退避してください
+        </div>
+      )}
+      {notice && (
+        <div className="notice" role="status">
+          {notice}
         </div>
       )}
 
@@ -500,8 +531,14 @@ export default function App() {
       {menu && (
         <>
           <div className="menu-layer" onClick={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }} />
-          <div className="context-menu" style={{ left: menu.x, top: menu.y }}>
-            {menu.kind === 'room' ? (
+          <div className="context-menu" style={menu.kind === 'file' && menu.alignRight ? { right: window.innerWidth - menu.x, top: menu.y } : { left: menu.x, top: menu.y }}>
+            {menu.kind === 'file' ? (
+              <FileMenu
+                onExportPlan={() => { exportPlan(); setMenu(null); }}
+                onBackupAll={() => { backupAll(); setMenu(null); }}
+                onImport={() => { setMenu(null); fileInputRef.current?.click(); }}
+              />
+            ) : menu.kind === 'room' ? (
               <>
                 <button onClick={() => { setOpeningDialogOpen(true); setMenu(null); }}>🚪 ドア／窓を追加</button>
                 <hr />

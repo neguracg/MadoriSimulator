@@ -199,3 +199,21 @@ export function parseImportFile(text: string, fileName: string): Plan[] {
 export function exportProject(p: Project): string {
   return JSON.stringify(p, null, 2);
 }
+
+/** File name of a whole-project backup, with the local date: madori-backup-2026-10-07.json */
+export function backupFileName(now: Date = new Date()): string {
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `madori-backup-${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}.json`;
+}
+
+/** Hand `text` to the browser as a downloaded file. */
+export function downloadText(fileName: string, text: string, mime = 'application/json'): void {
+  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a); // some browsers ignore click() on a link that is not in the page
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000); // not at once: the download may not have started reading it
+}

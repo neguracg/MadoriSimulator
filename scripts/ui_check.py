@@ -73,7 +73,7 @@ from ui_scn_input import (
     sc_settings_number_fields,
     sc_typing_is_one_undo_step,
 )
-from ui_scn_plans import sc_duplicate_plan, sc_share_link_uses_public_base
+from ui_scn_plans import sc_duplicate_plan, sc_file_menu_export_backup_import, sc_share_link_uses_public_base
 
 
 NPX = shutil.which("npx.cmd") or shutil.which("npx") or "npx"
@@ -261,6 +261,7 @@ SCENARIOS = [
     Scenario("leave_move_mode_by_import", "B12", sc_leave_move_mode_by_import),
     Scenario("leave_move_mode_by_duplicate", "F1 B12", sc_leave_move_mode_by_duplicate),
     Scenario("duplicate_plan", "F1", sc_duplicate_plan),
+    Scenario("file_menu_export_backup_import", "F3", sc_file_menu_export_backup_import),
     Scenario("door_follows_edge_drag", "F6", sc_door_follows_edge_drag),
     Scenario("delete_room_removes_its_door", "B11", sc_delete_room_removes_its_door),
     Scenario("modal_blocks_shortcuts", "B6 F7", sc_modal_blocks_shortcuts),

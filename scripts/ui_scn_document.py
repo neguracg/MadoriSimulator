@@ -84,6 +84,7 @@ def sc_import_adds_tab_keeps_room(env):
     ui.import_file("取込.json", json.dumps(EMPTY_DOC))
     ui.wait_until(lambda: ui.tab_names() == ["間取り 1", "取込"], "インポートで新しいタブが増える")
     check(ui.active_tab() == "取込", f"取り込んだタブが選ばれていない: {ui.active_tab()}")
+    check("1件の間取りを追加しました" in (ui.page.locator(".notice").text_content() or ""), "追加した件数のメッセージが出ていない")
     check(ui.page.locator(".room-label").count() == 0, "新しいタブに前の部屋が残っている")
     ui.page.locator(".plan-tab", has_text="間取り 1").click()
     check("消えたら困る部屋" in ui.canvas_text(), "元のタブの部屋が消えた")

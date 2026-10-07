@@ -2,6 +2,9 @@
 @owns 間取りの増減と受け渡しを確かめるシナリオ"""
 
 
+import json
+import re
+
 from ui_lib import check, public_app_url
 
 
@@ -45,3 +48,51 @@ def sc_duplicate_plan(env):
     check("原案の部屋" in ui.canvas_text() and len(ui.floor()["rooms"]) == 1, "複製を編集したら元の間取りまで変わった")
     ui.reload()
     check(ui.tab_names() == ["間取り 1", "間取り 1 のコピー"], f"再読み込み後にタブが違う: {ui.tab_names()}")
+
+
+def sc_file_menu_export_backup_import(env):
+    """F3: the file menu writes out this plan, backs up all plans, and reads a file in as new tabs (with a short message). Esc closes it."""
+    ui = env.ui()
+    ui.open()
+    ui.make_room(2, 2, 5, 4, "A室")
+    ui.page.locator(".plan-tab-add").click()
+    ui.wait_until(lambda: len(ui.project()["plans"]) == 2, "2つ目の間取り")
+    ui.make_room(8, 2, 11, 4, "B室")  # in plan 2
+
+    def open_menu():
+        ui.page.locator(".app-header button", has_text="ファイル").click()
+        ui.page.locator(".context-menu").wait_for()
+
+    open_menu()
+    labels = [t.strip() for t in ui.page.locator(".context-menu button").all_text_contents()]
+    check(len(labels) == 3 and "書き出し" in labels[0] and "バックアップ" in labels[1] and "読み込み" in labels[2], f"ファイルメニューの項目: {labels}")
+    ui.key("Escape")
+    ui.page.locator(".context-menu").wait_for(state="detached")
+    check(len(ui.floor()["rooms"]) == 1, "メニューを閉じる Esc で部屋が動いた")
+
+    open_menu()  # this plan only
+    with ui.page.expect_download() as dl:
+        ui.page.locator(".context-menu button", has_text="この間取りを書き出し").click()
+    one = dl.value
+    check(one.suggested_filename == "間取り 2.json", f"書き出しのファイル名: {one.suggested_filename}")
+    doc = json.loads(open(one.path(), encoding="utf-8").read())
+    check([r["name"] for r in doc["floors"]["1"]["rooms"]] == ["B室"], "書き出した間取りの中身が違う")
+
+    open_menu()  # everything
+    with ui.page.expect_download() as dl:
+        ui.page.locator(".context-menu button", has_text="全部まとめてバックアップ").click()
+    allp = dl.value
+    check(re.fullmatch(r"madori-backup-\d{4}-\d{2}-\d{2}\.json", allp.suggested_filename), f"バックアップのファイル名: {allp.suggested_filename}")
+    text = open(allp.path(), encoding="utf-8").read()
+    proj = json.loads(text)
+    got = [(p["name"], [r["name"] for r in p["doc"]["floors"]["1"]["rooms"]]) for p in proj["plans"]]
+    check(got == [("間取り 1", ["A室"]), ("間取り 2", ["B室"])], f"バックアップに全部の間取りが入っていない: {got}")
+
+    open_menu()  # read it back in through the menu: a file chooser opens
+    with ui.page.expect_file_chooser() as fc:
+        ui.page.locator(".context-menu button", has_text="ファイルから読み込み").click()
+    fc.value.set_files(files=[{"name": "戻す.json", "mimeType": "application/json", "buffer": text.encode("utf-8")}])
+    ui.wait_until(lambda: len(ui.tab_names()) == 4, "バックアップの2件が新しいタブとして追加される")
+    notice = ui.wait_until(lambda: ui.page.locator(".notice").text_content(), "追加した件数のメッセージ")
+    check("2件の間取りを追加しました" in notice, f"メッセージ: {notice}")
+    check(ui.tab_names()[:2] == ["間取り 1", "間取り 2"], f"元のタブが変わった: {ui.tab_names()}")

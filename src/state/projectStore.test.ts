@@ -7,6 +7,7 @@ import {
   OLD_DOC_KEY,
   PROJECT_KEY,
   addPlans,
+  backupFileName,
   buildProject,
   copyPlan,
   exportProject,
@@ -423,5 +424,12 @@ describe('buildProject', () => {
     expect(p).toEqual({ version: 1, activePlanId: 'p2', plans: [plans[0], { id: 'p2', name: '案B', doc: roomDoc() }] });
     expect(plans[1].doc).toEqual(defaultDoc()); // 入力は書き換えない
     expect(parseImportFile(exportProject(p), 'x.json').map((x) => x.name)).toEqual(['案A', '案B']); // 書き出した形を読み戻せる
+  });
+});
+
+describe('backupFileName', () => {
+  it('ローカルの日付で madori-backup-YYYY-MM-DD.json（1桁の月日は 0 埋め）', () => {
+    expect(backupFileName(new Date(2026, 9, 7, 23, 59))).toBe('madori-backup-2026-10-07.json');
+    expect(backupFileName(new Date(2027, 0, 5))).toBe('madori-backup-2027-01-05.json');
   });
 });

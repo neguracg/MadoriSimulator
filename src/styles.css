@@ -35,6 +35,8 @@ body {
 .floor-tab.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .save-error { background: #c0392b; color: #fff; padding: 6px 14px; font-weight: 600; font-size: 12px; }
+/* a short message that goes away by itself: floats over the page so it never moves the layout */
+.notice { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 70; max-width: calc(100vw - 32px); background: #2c3e50; color: #fff; padding: 8px 16px; border-radius: 999px; box-shadow: var(--shadow); font-weight: 600; font-size: 12px; pointer-events: none; }
 .zoom { display: flex; align-items: center; gap: 6px; background: #f0f2f4; border-radius: 8px; padding: 2px 6px; }
 .zoom button { border: none; background: #fff; width: 24px; height: 24px; border-radius: 6px; cursor: pointer; }
 .zoom span { width: 42px; text-align: center; }
@@ -174,14 +176,12 @@ input[aria-invalid="true"] { border-color: #e74c3c; background: #fdf2f1; }
 .custom-size input { width: 90px; margin-top: 0; }
 .custom-size button { margin-left: auto; padding: 8px 14px; border-radius: 8px; cursor: pointer; border: 1px solid var(--accent); }
 
-/* file button */
-.file-btn { position: relative; overflow: hidden; display: inline-block; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; font-weight: 600; margin: 0; color: var(--ink); }
-.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.header-right > button, .header-right .file-btn { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; font-weight: 600; }
+/* header buttons */
+.header-right > button { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; font-weight: 600; }
 
 /* context menu */
 .menu-layer { position: fixed; inset: 0; z-index: 60; }
-.context-menu { position: fixed; z-index: 61; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 4px; min-width: 130px; }
+.context-menu { position: fixed; z-index: 61; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 4px; min-width: 130px; max-width: calc(100vw - 16px); }
 .context-menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; border: none; background: none; cursor: pointer; border-radius: 6px; font-size: 13px; }
 .context-menu button:hover { background: #f0f4f8; }
 .context-menu hr { border: none; border-top: 1px solid var(--line); margin: 4px 0; }
