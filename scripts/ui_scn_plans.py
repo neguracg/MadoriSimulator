@@ -48,6 +48,11 @@ def sc_duplicate_plan(env):
     check("原案の部屋" in ui.canvas_text() and len(ui.floor()["rooms"]) == 1, "複製を編集したら元の間取りまで変わった")
     ui.reload()
     check(ui.tab_names() == ["間取り 1", "間取り 1 のコピー"], f"再読み込み後にタブが違う: {ui.tab_names()}")
+    # A double click on the button must not open the rename prompt of the tab it sits in. (A real double click cannot test it: the
+    # first click copies the plan and the buttons move, so the second click lands on something else.)
+    ui.page.locator(".plan-tab-dup").dispatch_event("dblclick")
+    ui.settle(300)
+    check(not any("間取り名を変更" in d for d in ui.dialogs), f"複製ボタンの二重タップで名前変更の入力が開いた: {ui.dialogs}")
 
 
 def sc_file_menu_export_backup_import(env):

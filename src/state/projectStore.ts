@@ -142,8 +142,17 @@ function parseProject(raw: string): { project: Project | null; damaged: boolean 
  */
 export function foreignPlans(raw: string | null, isKnown: (id: string) => boolean): Plan[] {
   if (raw === null) return [];
-  const { project } = parseProject(raw);
-  return project ? project.plans.filter((p) => !isKnown(p.id)) : [];
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!isObj(data) || !Array.isArray(data.plans)) return [];
+  // Picked by id BEFORE the documents are read: the other tab saves on every edit, and the plans this tab already has
+  // (nearly all of them) must not be checked again each time. A plan without an id cannot be told from one seen before: left out.
+  const unknown = data.plans.filter((p) => isObj(p) && typeof p.id === 'string' && p.id !== '' && !isKnown(p.id));
+  return readPlans(unknown, true, (i) => `間取り ${i + 1}`).plans;
 }
 
 function parseDoc(text: string): Doc | null {

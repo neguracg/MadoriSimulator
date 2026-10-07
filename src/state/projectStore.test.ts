@@ -443,6 +443,15 @@ describe('foreignPlans（別のタブが保存した間取りのうち、この�
     expect(foreignPlans(raw, () => false).map((p) => p.id)).toEqual(['p1', 'p2']);
   });
 
+  it('知っている id の間取りは読み直さない（中身が壊れていても関係なく、id の無い間取りは取り込まない）', () => {
+    const raw = JSON.stringify({
+      version: 1,
+      activePlanId: 'k',
+      plans: [{ id: 'k', name: '知っている', doc: { broken: true } }, { name: 'id なし', doc: legacyDoc() }, { id: 'n', name: '新しい', doc: legacyDoc() }],
+    });
+    expect(foreignPlans(raw, (id) => id === 'k').map((p) => p.id)).toEqual(['n']);
+  });
+
   it('保存データが無い・壊れている・間取りが無い時は何も返さない（退避の書き込みもしない）', () => {
     for (const bad of [null, '', '{broken', '{}', '[]', '{"plans":[]}', '{"plans":[{"id":"x"}]}']) {
       expect(foreignPlans(bad, () => false), String(bad)).toEqual([]);

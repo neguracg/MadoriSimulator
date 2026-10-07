@@ -37,6 +37,7 @@ export default function PlanTabs(props: Props) {
                 e.stopPropagation();
                 props.onDuplicate();
               }}
+              onDoubleClick={(e) => e.stopPropagation()} // a quick second tap on the button must not open the rename prompt of the tab
             >
               ⧉
             </button>

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """ui_lib.py -- 画面E2E（ui_check.py）の部品。
-@owns 画面E2Eの共通部品: 検査関数・ブラウザ操作ヘルパー Ui・Env・固定データ・ドア配置の操作
+@owns 画面E2Eの共通部品: 検査関数・ブラウザ操作ヘルパー Ui（別タブ・CDP のタッチ入力を含む）・Env・固定データ・ドア配置の操作・色と PDF の検査
 
 シナリオ本体は ui_scn_*.py（概念ごと）、サーバー起動・実行・結果表示と SCENARIOS の一覧は ui_check.py。
 """
