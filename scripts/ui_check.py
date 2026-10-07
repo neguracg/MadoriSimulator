@@ -45,6 +45,7 @@ from ui_scn_canvas import (
     sc_door_follows_edge_drag,
     sc_edge_drag_undo_count,
     sc_furniture_move_resize_applied,
+    sc_leave_move_mode_by_duplicate,
     sc_leave_move_mode_by_import,
     sc_leave_move_mode_by_new_tab,
     sc_leave_move_mode_by_tab_switch,
@@ -72,7 +73,7 @@ from ui_scn_input import (
     sc_settings_number_fields,
     sc_typing_is_one_undo_step,
 )
-from ui_scn_plans import sc_share_link_uses_public_base
+from ui_scn_plans import sc_duplicate_plan, sc_share_link_uses_public_base
 
 
 NPX = shutil.which("npx.cmd") or shutil.which("npx") or "npx"
@@ -258,6 +259,8 @@ SCENARIOS = [
     Scenario("leave_move_mode_by_new_tab", "B12", sc_leave_move_mode_by_new_tab),
     Scenario("leave_move_mode_by_tab_switch", "B12", sc_leave_move_mode_by_tab_switch),
     Scenario("leave_move_mode_by_import", "B12", sc_leave_move_mode_by_import),
+    Scenario("leave_move_mode_by_duplicate", "F1 B12", sc_leave_move_mode_by_duplicate),
+    Scenario("duplicate_plan", "F1", sc_duplicate_plan),
     Scenario("door_follows_edge_drag", "F6", sc_door_follows_edge_drag),
     Scenario("delete_room_removes_its_door", "B11", sc_delete_room_removes_its_door),
     Scenario("modal_blocks_shortcuts", "B6 F7", sc_modal_blocks_shortcuts),

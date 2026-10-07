@@ -40,6 +40,28 @@ export function makePlan(name: string, doc?: Doc): Plan {
   return { id: uid(), name, doc: doc ?? defaultDoc() };
 }
 
+/** A copy of a plan under a new id and a new name. The document is a deep copy (JSON round trip): nothing is shared with the original. */
+export function copyPlan(src: Plan, doc: Doc = src.doc): Plan {
+  return makePlan(`${src.name} のコピー`, JSON.parse(JSON.stringify(doc)) as Doc);
+}
+
+/**
+ * The plan list after plans are added. Every way of getting a new plan ends here (new tab, copy, shared link, imported
+ * file, plans another tab saved). `parked` is the document of the plan being left: it is stored into its tab first.
+ * A plan whose id is already in the list is not added twice. Returns `plans` itself when nothing changes.
+ */
+export function addPlans(plans: Plan[], added: Plan[], parked?: { id: string; doc: Doc }): Plan[] {
+  const have = new Set(plans.map((p) => p.id));
+  const fresh = added.filter((p) => !have.has(p.id));
+  const base = parked ? plans.map((p) => (p.id === parked.id ? { ...p, doc: parked.doc } : p)) : plans;
+  return fresh.length === 0 && !parked ? plans : base.concat(fresh);
+}
+
+/** The project as it is stored: the plan on screen carries the live document (the history's present). */
+export function buildProject(plans: Plan[], activePlanId: string, doc: Doc): Project {
+  return { version: 1, activePlanId, plans: plans.map((p) => (p.id === activePlanId ? { ...p, doc } : p)) };
+}
+
 function freshProject(): Project {
   const plan = makePlan('間取り 1');
   return { version: 1, activePlanId: plan.id, plans: [plan] };

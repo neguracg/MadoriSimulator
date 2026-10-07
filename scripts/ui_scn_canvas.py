@@ -173,6 +173,20 @@ def sc_leave_move_mode_by_import(env):
     check(no_overlap(ui.project()["plans"][0]["doc"]), "移動モードのまま取り込んだら、元の間取りに重なりが残った")
 
 
+def sc_leave_move_mode_by_duplicate(env):
+    """Same for the copy button: the original is parked settled, and so is its copy."""
+    ui = env.ui()
+    ui.open()
+    two_rooms(ui)
+    move_a_over_b(ui)
+    ui.page.locator(".plan-tab-dup").click()
+    ui.wait_until(lambda: len(ui.project()["plans"]) == 2, "複製でタブが増える")
+    ui.settle()
+    plans = ui.project()["plans"]
+    check(no_overlap(plans[0]["doc"]), "移動モードのまま複製したら、元の間取りに重なりが残った")
+    check(no_overlap(plans[1]["doc"]), "移動モードのまま複製したら、複製に重なりが残った")
+
+
 def sc_door_follows_edge_drag(env):
     """F6: dragging a wall of the room takes its door along (same direction, the nearest position on the new wall)."""
     ui = env.ui()

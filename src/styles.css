@@ -44,8 +44,9 @@ body {
 .plan-tab { display: flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--line); border-bottom: none; border-radius: 8px 8px 0 0; background: #f3f5f7; color: var(--muted); cursor: pointer; font-weight: 600; white-space: nowrap; }
 .plan-tab.active { background: #fff; color: var(--ink); box-shadow: 0 -2px 0 var(--accent) inset; }
 .plan-tab-name { font-size: 13px; }
-.plan-tab-close { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; border-radius: 4px; }
+.plan-tab-close, .plan-tab-dup { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; border-radius: 4px; }
 .plan-tab-close:hover { background: #e2e6ea; color: #e74c3c; }
+.plan-tab-dup:hover { background: #e2e6ea; color: var(--accent); }
 .plan-tab-add { border: 1px dashed var(--line); background: #fff; color: var(--muted); cursor: pointer; border-radius: 8px; padding: 0 12px; font-size: 16px; font-weight: 700; }
 .plan-tab-add:hover { color: var(--accent); border-color: var(--accent); }
 

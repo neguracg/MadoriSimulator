@@ -15,7 +15,7 @@ import type { CellAction, CellKey, Doc, Furniture, Mode, Room, RoomType } from '
 import { useHistory } from './state/useHistory';
 import { mergeKeyFor } from './state/mergeKeys';
 import * as ops from './state/docOps';
-import { loadProject, makePlan, parseImportFile, saveProject, type Plan, type Project } from './state/projectStore';
+import { addPlans, buildProject, copyPlan, loadProject, makePlan, parseImportFile, saveProject, type Plan } from './state/projectStore';
 import { buildShareUrl, clearShareHash, isLocalPage, readSharedFromHash } from './utils/share';
 
 export default function App() {
@@ -65,12 +65,7 @@ export default function App() {
 
   // autosave the whole project (active plan mirrors current doc)
   useEffect(() => {
-    const project: Project = {
-      version: 1,
-      activePlanId,
-      plans: plans.map((p) => (p.id === activePlanId ? { ...p, doc } : p)),
-    };
-    setSaveError(!saveProject(project));
+    setSaveError(!saveProject(buildProject(plans, activePlanId, doc)));
   }, [doc, plans, activePlanId]);
 
   const resetUi = () => {
@@ -109,12 +104,12 @@ export default function App() {
     setModeState('edit');
     resetUi();
   };
-  // Every route that adds plans (new tab, shared link, imported file) comes through here:
+  // Every route that adds plans (new tab, copy, shared link, imported file) comes through here:
   // park the current document in its own tab, then open the first added plan.
   const appendPlans = (added: Plan[]) => {
     if (added.length === 0) return;
     const saved = leaveCurrentDoc();
-    setPlans((ps) => ps.map((p) => (p.id === activePlanId ? { ...p, doc: saved } : p)).concat(added));
+    setPlans((ps) => addPlans(ps, added, { id: activePlanId, doc: saved }));
     reset(added[0].doc);
     setActivePlanId(added[0].id);
     setFloor(1);
@@ -122,6 +117,11 @@ export default function App() {
     resetUi();
   };
   const addPlan = () => appendPlans([makePlan(`間取り ${plans.length + 1}`)]);
+  // A copy of the plan on screen (its document as it will be parked: move mode's overlaps settled), opened at once.
+  const duplicatePlan = () => {
+    const src = plans.find((p) => p.id === activePlanId);
+    if (src) appendPlans([copyPlan(src, leaveCurrentDoc())]);
+  };
   const importSharedPlan = (name: string, sdoc: Doc) => appendPlans([makePlan(name, sdoc)]);
 
   // import a plan shared via URL hash (#p=...) on first load
@@ -340,6 +340,7 @@ export default function App() {
         activeId={activePlanId}
         onSwitch={switchPlan}
         onAdd={addPlan}
+        onDuplicate={duplicatePlan}
         onRename={renamePlan}
         onDelete={deletePlan}
       />

@@ -6,11 +6,15 @@ import {
   CORRUPT_KEY_PREFIX,
   OLD_DOC_KEY,
   PROJECT_KEY,
+  addPlans,
+  buildProject,
+  copyPlan,
   exportProject,
   loadProject,
   makePlan,
   parseImportFile,
   saveProject,
+  type Plan,
   type Project,
   type StorageLike,
 } from './projectStore';
@@ -362,5 +366,62 @@ describe('makePlan', () => {
     expect(a.id).not.toBe(b.id);
     expect(a.doc).toEqual(defaultDoc());
     expect(a.doc).not.toBe(b.doc);
+  });
+});
+
+describe('copyPlan', () => {
+  it('名前は「<名前> のコピー」・id は新規・文書は深いコピー（元と何も共有しない）', () => {
+    const src: Plan = { id: 'p2', name: '案B', doc: roomDoc() };
+    const copy = copyPlan(src);
+    expect(copy.name).toBe('案B のコピー');
+    expect(copy.id).not.toBe('p2');
+    expect(copy.doc).toEqual(src.doc);
+    expect(copy.doc).not.toBe(src.doc);
+    expect(copy.doc.floors[1].rooms[0]).not.toBe(src.doc.floors[1].rooms[0]);
+    expect(copy.doc.floors[1].rooms[0].cells).not.toBe(src.doc.floors[1].rooms[0].cells);
+    copy.doc.floors[1].rooms[0].cells.push('9,9'); // 複製を触っても元は変わらない
+    copy.doc.settings.cellMm = 500;
+    expect(src.doc.floors[1].rooms[0].cells).toEqual(['1,1', '2,1']);
+    expect(src.doc.settings.cellMm).toBe(455);
+  });
+
+  it('文書を渡せばそれを複製する（移動モード中に重なりを解消した文書など）', () => {
+    const src: Plan = { id: 'p1', name: '案A', doc: defaultDoc() };
+    expect(copyPlan(src, roomDoc()).doc).toEqual(roomDoc());
+  });
+});
+
+describe('addPlans', () => {
+  const plan = (id: string, name = id): Plan => ({ id, name, doc: defaultDoc() });
+
+  it('追加した間取りは最後に並ぶ。id が既にある間取りは2つにならない', () => {
+    const base = [plan('a'), plan('b')];
+    expect(addPlans(base, [plan('c'), plan('a', '別の中身'), plan('d')]).map((p) => p.id)).toEqual(['a', 'b', 'c', 'd']);
+    expect(addPlans(base, [plan('a', '別の中身')])[0].name).toBe('a'); // 既存の間取りは置き換えない
+  });
+
+  it('追加するものが無ければ同じ配列を返す', () => {
+    const base = [plan('a')];
+    expect(addPlans(base, [])).toBe(base);
+    expect(addPlans(base, [plan('a')])).toBe(base);
+  });
+
+  it('離れる間取りの文書を、その間取りのタブへ保管してから追加する', () => {
+    const base = [plan('a'), plan('b')];
+    const out = addPlans(base, [plan('c')], { id: 'b', doc: roomDoc() });
+    expect(out.map((p) => p.id)).toEqual(['a', 'b', 'c']);
+    expect(out[1].doc).toEqual(roomDoc());
+    expect(out[0]).toBe(base[0]); // 触らない間取りは同じオブジェクト
+    expect(base[1].doc).toEqual(defaultDoc()); // 入力は書き換えない
+  });
+});
+
+describe('buildProject', () => {
+  it('選択中の間取りは画面の文書（履歴の現在値）で、他の間取りは保存されている文書のまま', () => {
+    const plans: Plan[] = [{ id: 'p1', name: '案A', doc: defaultDoc() }, { id: 'p2', name: '案B', doc: defaultDoc() }];
+    const p = buildProject(plans, 'p2', roomDoc());
+    expect(p).toEqual({ version: 1, activePlanId: 'p2', plans: [plans[0], { id: 'p2', name: '案B', doc: roomDoc() }] });
+    expect(plans[1].doc).toEqual(defaultDoc()); // 入力は書き換えない
+    expect(parseImportFile(exportProject(p), 'x.json').map((x) => x.name)).toEqual(['案A', '案B']); // 書き出した形を読み戻せる
   });
 });

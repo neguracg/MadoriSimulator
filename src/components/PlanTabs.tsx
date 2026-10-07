@@ -8,6 +8,7 @@ interface Props {
   activeId: string;
   onSwitch: (id: string) => void;
   onAdd: () => void;
+  onDuplicate: () => void; // copies the active plan
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
 }
@@ -27,6 +28,19 @@ export default function PlanTabs(props: Props) {
           title="クリックで切替・ダブルクリックで名前変更"
         >
           <span className="plan-tab-name">{p.name}</span>
+          {p.id === props.activeId && (
+            <button
+              className="plan-tab-dup"
+              title="この間取りを複製"
+              aria-label="この間取りを複製"
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onDuplicate();
+              }}
+            >
+              ⧉
+            </button>
+          )}
           {props.plans.length > 1 && (
             <button
               className="plan-tab-close"
