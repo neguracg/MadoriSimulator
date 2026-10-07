@@ -9,7 +9,8 @@ import PlanTabs from './components/PlanTabs';
 import ShareDialog from './components/ShareDialog';
 import OpeningDialog from './components/OpeningDialog';
 import FurniturePanel from './components/FurniturePanel';
-import { cellsToM2, DEFAULT_FURNITURE_COLOR, FLOORS, m2ToJou, m2ToTsubo, uid } from './constants';
+import { cellsToM2, DEFAULT_FURNITURE_COLOR, FLOORS, m2ToJou, m2ToTsubo, OPENING_MM_RANGE, uid } from './constants';
+import { parseNumberInRange } from './components/NumberField';
 import type { CellAction, CellKey, Doc, Furniture, Mode, Room, RoomType } from './types';
 import { useHistory } from './state/useHistory';
 import { mergeKeyFor } from './state/mergeKeys';
@@ -233,6 +234,16 @@ export default function App() {
     if (mode === 'move') commit((d) => ops.resolveOverlaps(d, floor));
     setFloor(f);
     resetUi();
+  };
+
+  // Ask for a new width of an opening. window.prompt hands back any text: only a number inside the allowed range is applied.
+  const changeOpeningWidth = (id: string) => {
+    const cur = floorData.openings.find((o) => o.id === id);
+    const v = window.prompt(`幅 (mm) を入力（${OPENING_MM_RANGE.min}〜${OPENING_MM_RANGE.max}）`, String(cur?.size ?? 800));
+    if (v === null || v.trim() === '') return; // cancelled
+    const n = parseNumberInRange(v, OPENING_MM_RANGE.min, OPENING_MM_RANGE.max);
+    if (n === null) window.alert(`幅は ${OPENING_MM_RANGE.min}〜${OPENING_MM_RANGE.max} mm の数字で入力してください。`);
+    else commit((d) => ops.patchOpening(d, floor, id, { size: n }));
   };
 
   const deleteSelected = () => {
@@ -485,13 +496,7 @@ export default function App() {
               </>
             ) : (
               <>
-                <button onClick={() => {
-                  const cur = floorData.openings.find((o) => o.id === menu.id);
-                  const v = window.prompt('幅 (mm) を入力', String(cur?.size ?? 800));
-                  const n = Number(v);
-                  if (v && n >= 100) commit((d) => ops.patchOpening(d, floor, menu.id, { size: n }));
-                  setMenu(null);
-                }}>幅を変更…</button>
+                <button onClick={() => { changeOpeningWidth(menu.id); setMenu(null); }}>幅を変更…</button>
                 <button onClick={() => {
                   const cur = floorData.openings.find((o) => o.id === menu.id);
                   if (cur) commit((d) => ops.patchOpening(d, floor, menu.id, { kind: cur.kind === 'door' ? 'window' : 'door' }));

@@ -1,4 +1,6 @@
+import { CELL_MM_RANGE, WALL_MM_RANGE } from '../constants';
 import type { RoomType, Settings } from '../types';
+import NumberField from './NumberField';
 
 interface Props {
   roomTypes: RoomType[];
@@ -20,22 +22,20 @@ export default function SettingsDialog(props: Props) {
           <div className="settings-row">
             <label>
               壁厚 (mm)
-              <input
-                type="number"
+              <NumberField
                 value={props.settings.wallMm}
-                min={50}
-                max={400}
-                onChange={(e) => props.onPatchSettings({ wallMm: Number(e.target.value) || 0 })}
+                min={WALL_MM_RANGE.min}
+                max={WALL_MM_RANGE.max}
+                onCommit={(n) => props.onPatchSettings({ wallMm: n })}
               />
             </label>
             <label>
               1マス (mm)
-              <input
-                type="number"
+              <NumberField
                 value={props.settings.cellMm}
-                min={100}
-                max={1000}
-                onChange={(e) => props.onPatchSettings({ cellMm: Number(e.target.value) || 455 })}
+                min={CELL_MM_RANGE.min}
+                max={CELL_MM_RANGE.max}
+                onCommit={(n) => props.onPatchSettings({ cellMm: n })}
               />
             </label>
           </div>

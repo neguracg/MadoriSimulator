@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { DEFAULT_DOOR_SIZE, DEFAULT_WINDOW_SIZE, DOOR_COLOR, DOOR_SIZES, WINDOW_COLOR, WINDOW_SIZES } from '../constants';
+import { DEFAULT_DOOR_SIZE, DEFAULT_WINDOW_SIZE, DOOR_COLOR, DOOR_SIZES, OPENING_MM_RANGE, WINDOW_COLOR, WINDOW_SIZES } from '../constants';
+import NumberField from './NumberField';
 
 interface Props {
   onConfirm: (kind: 'door' | 'window', size: number) => void;
@@ -8,14 +9,14 @@ interface Props {
 
 export default function OpeningDialog(props: Props) {
   const [kind, setKind] = useState<'door' | 'window'>('door');
-  const [custom, setCustom] = useState<string>(String(kind === 'door' ? DEFAULT_DOOR_SIZE : DEFAULT_WINDOW_SIZE));
+  const [customSize, setCustomSize] = useState(kind === 'door' ? DEFAULT_DOOR_SIZE : DEFAULT_WINDOW_SIZE); // the last valid custom width
 
   const sizes = kind === 'door' ? DOOR_SIZES : WINDOW_SIZES;
   const color = kind === 'door' ? DOOR_COLOR : WINDOW_COLOR;
 
   const switchKind = (k: 'door' | 'window') => {
     setKind(k);
-    setCustom(String(k === 'door' ? DEFAULT_DOOR_SIZE : DEFAULT_WINDOW_SIZE));
+    setCustomSize(k === 'door' ? DEFAULT_DOOR_SIZE : DEFAULT_WINDOW_SIZE);
   };
 
   return (
@@ -43,21 +44,9 @@ export default function OpeningDialog(props: Props) {
 
         <h4>カスタム幅</h4>
         <div className="custom-size">
-          <input
-            type="number"
-            min={100}
-            max={4000}
-            value={custom}
-            onChange={(e) => setCustom(e.target.value)}
-          />
+          <NumberField value={customSize} min={OPENING_MM_RANGE.min} max={OPENING_MM_RANGE.max} onCommit={setCustomSize} />
           <span>mm</span>
-          <button
-            className="primary"
-            onClick={() => {
-              const n = Number(custom);
-              if (n >= 100) props.onConfirm(kind, n);
-            }}
-          >
+          <button className="primary" onClick={() => props.onConfirm(kind, customSize)}>
             この幅で配置
           </button>
         </div>

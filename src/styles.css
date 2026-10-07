@@ -111,6 +111,7 @@ label { display: block; margin-bottom: 10px; font-size: 12px; color: var(--muted
 input, select, textarea { width: 100%; margin-top: 4px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 7px; font-size: 13px; color: var(--ink); background: #fff; font-family: inherit; }
 textarea { resize: vertical; min-height: 38px; line-height: 1.35; }
 input[type="color"] { padding: 2px; height: 32px; width: 44px; cursor: pointer; }
+input[aria-invalid="true"] { border-color: #e74c3c; background: #fdf2f1; }
 .color-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .muted { color: var(--muted); }
 .link { background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; font-weight: 600; }
