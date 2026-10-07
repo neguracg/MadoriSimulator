@@ -34,6 +34,7 @@ body {
 }
 .floor-tab.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.save-error { background: #c0392b; color: #fff; padding: 6px 14px; font-weight: 600; font-size: 12px; }
 .zoom { display: flex; align-items: center; gap: 6px; background: #f0f2f4; border-radius: 8px; padding: 2px 6px; }
 .zoom button { border: none; background: #fff; width: 24px; height: 24px; border-radius: 6px; cursor: pointer; }
 .zoom span { width: 42px; text-align: center; }

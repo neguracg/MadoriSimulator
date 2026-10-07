@@ -9,55 +9,12 @@ import PlanTabs from './components/PlanTabs';
 import ShareDialog from './components/ShareDialog';
 import OpeningDialog from './components/OpeningDialog';
 import FurniturePanel from './components/FurniturePanel';
-import { cellsToM2, DEFAULT_FURNITURE_COLOR, defaultDoc, FLOORS, m2ToJou, m2ToTsubo, uid } from './constants';
+import { cellsToM2, DEFAULT_FURNITURE_COLOR, FLOORS, m2ToJou, m2ToTsubo, uid } from './constants';
 import type { CellAction, CellKey, Doc, Furniture, Mode, Room, RoomType } from './types';
 import { useHistory } from './state/useHistory';
 import * as ops from './state/docOps';
+import { loadProject, makePlan, parseImportFile, saveProject, type Plan, type Project } from './state/projectStore';
 import { buildShareUrl, clearShareHash, readSharedFromHash } from './utils/share';
-
-const PROJECT_KEY = 'madori-simulator-project-v1';
-const OLD_DOC_KEY = 'madori-simulator-doc-v1';
-
-interface Plan {
-  id: string;
-  name: string;
-  doc: Doc;
-}
-interface Project {
-  version: number;
-  activePlanId: string;
-  plans: Plan[];
-}
-
-function makePlan(name: string, doc?: Doc): Plan {
-  return { id: uid(), name, doc: doc ?? defaultDoc() };
-}
-
-function loadProject(): Project {
-  try {
-    const raw = localStorage.getItem(PROJECT_KEY);
-    if (raw) {
-      const p = JSON.parse(raw) as Project;
-      if (p.plans?.length && p.plans.every((pl) => pl.doc?.floors)) {
-        if (!p.plans.find((pl) => pl.id === p.activePlanId)) p.activePlanId = p.plans[0].id;
-        return p;
-      }
-    }
-    // migrate a single legacy doc, if any
-    const old = localStorage.getItem(OLD_DOC_KEY);
-    if (old) {
-      const doc = JSON.parse(old) as Doc;
-      if (doc.floors && doc.roomTypes) {
-        const plan = makePlan('間取り 1', doc);
-        return { version: 1, activePlanId: plan.id, plans: [plan] };
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-  const plan = makePlan('間取り 1');
-  return { version: 1, activePlanId: plan.id, plans: [plan] };
-}
 
 export default function App() {
   const [boot] = useState(loadProject);
@@ -66,6 +23,7 @@ export default function App() {
 
   const [plans, setPlans] = useState<Plan[]>(boot.plans);
   const [activePlanId, setActivePlanId] = useState(boot.activePlanId);
+  const [saveError, setSaveError] = useState(false); // the last autosave was refused by the browser
 
   const [floor, setFloor] = useState(1);
   const [mode, setModeState] = useState<Mode>('edit');
@@ -110,11 +68,7 @@ export default function App() {
       activePlanId,
       plans: plans.map((p) => (p.id === activePlanId ? { ...p, doc } : p)),
     };
-    try {
-      localStorage.setItem(PROJECT_KEY, JSON.stringify(project));
-    } catch {
-      /* ignore */
-    }
+    setSaveError(!saveProject(project));
   }, [doc, plans, activePlanId]);
 
   const resetUi = () => {
@@ -149,26 +103,20 @@ export default function App() {
       resetUi();
     }
   };
-  const addPlan = () => {
+  // Every route that adds plans (new tab, shared link, imported file) comes through here:
+  // park the current document in its own tab, then open the first added plan.
+  const appendPlans = (added: Plan[]) => {
+    if (added.length === 0) return;
     const saved = presentRef.current;
-    const np = makePlan(`間取り ${plans.length + 1}`);
-    setPlans((ps) => ps.map((p) => (p.id === activePlanId ? { ...p, doc: saved } : p)).concat(np));
-    reset(np.doc);
-    setActivePlanId(np.id);
+    setPlans((ps) => ps.map((p) => (p.id === activePlanId ? { ...p, doc: saved } : p)).concat(added));
+    reset(added[0].doc);
+    setActivePlanId(added[0].id);
     setFloor(1);
     setModeState('edit');
     resetUi();
   };
-  const importSharedPlan = (name: string, sdoc: Doc) => {
-    const saved = presentRef.current;
-    const np = makePlan(name, sdoc);
-    setPlans((ps) => ps.map((p) => (p.id === activePlanId ? { ...p, doc: saved } : p)).concat(np));
-    reset(np.doc);
-    setActivePlanId(np.id);
-    setFloor(1);
-    setModeState('edit');
-    resetUi();
-  };
+  const addPlan = () => appendPlans([makePlan(`間取り ${plans.length + 1}`)]);
+  const importSharedPlan = (name: string, sdoc: Doc) => appendPlans([makePlan(name, sdoc)]);
 
   // import a plan shared via URL hash (#p=...) on first load
   useEffect(() => {
@@ -298,18 +246,15 @@ export default function App() {
     a.click();
     URL.revokeObjectURL(url);
   };
+  // An imported file is ADDED as new tab(s) and selected; the plan being edited is never replaced.
   const importJson = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
-      try {
-        const d = JSON.parse(String(reader.result)) as Doc;
-        if (!d.floors || !d.roomTypes || !d.settings) throw new Error('invalid');
-        reset(d);
-        resetUi();
-      } catch {
-        alert('JSONの読み込みに失敗しました。');
-      }
+      const added = parseImportFile(String(reader.result), file.name);
+      if (added.length === 0) alert('JSONの読み込みに失敗しました。');
+      else appendPlans(added);
     };
+    reader.onerror = () => alert('JSONの読み込みに失敗しました。');
     reader.readAsText(file);
   };
 
@@ -350,6 +295,12 @@ export default function App() {
           </label>
         </div>
       </header>
+
+      {saveError && (
+        <div className="save-error" role="alert">
+          保存に失敗しました。ファイルへ書き出して退避してください
+        </div>
+      )}
 
       <PlanTabs
         plans={plans.map((p) => ({ id: p.id, name: p.name }))}

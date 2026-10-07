@@ -1,5 +1,6 @@
 import LZString from 'lz-string';
 import type { Doc } from '../types';
+import { normalizeDoc } from '../state/migrate';
 
 interface SharePayload {
   n: string; // plan name
@@ -15,8 +16,10 @@ export function decodePlan(s: string): { name: string; doc: Doc } | null {
   try {
     const raw = LZString.decompressFromEncodedURIComponent(s);
     if (!raw) return null;
-    const o = JSON.parse(raw) as SharePayload;
-    if (o && o.d && o.d.floors && o.d.roomTypes) return { name: o.n || '受信した間取り', doc: o.d };
+    const o = JSON.parse(raw) as { n?: unknown; d?: unknown } | null;
+    const doc = normalizeDoc(o?.d); // old / partial documents are completed here, like at every other entrance
+    const name = o?.n;
+    if (doc) return { name: typeof name === 'string' && name ? name : '受信した間取り', doc };
   } catch {
     /* ignore */
   }
