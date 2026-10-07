@@ -14,6 +14,7 @@ import {
 } from '../types';
 import { cellOwnerMap, clampRoomDelta, connectedComponents, inGrid, neighborCell } from '../utils/geometry';
 import { GRID_H, GRID_W, nextAutoColor, uid } from '../constants';
+import { pruneOrphans, reconcileOpenings } from './openingOps';
 
 function mapFloor(doc: Doc, floor: number, fn: (f: FloorData) => FloorData): Doc {
   return { ...doc, floors: { ...doc.floors, [floor]: fn(doc.floors[floor]) } };
@@ -73,8 +74,9 @@ export function createRoom(
   return mapFloor(doc, floor, (f) => assignCells({ ...f, rooms: [...f.rooms, room] }, room.id, cells));
 }
 
+/** Doors/windows that no room is on a wall of any more go with the room (openingOps.pruneOrphans). */
 export function deleteRoom(doc: Doc, floor: number, roomId: string): Doc {
-  return mapFloor(doc, floor, (f) => ({ ...f, rooms: f.rooms.filter((r) => r.id !== roomId) }));
+  return mapFloor(doc, floor, (f) => pruneOrphans({ ...f, rooms: f.rooms.filter((r) => r.id !== roomId) }));
 }
 
 export function patchRoom(doc: Doc, floor: number, roomId: string, patch: RoomPatch): Doc {
@@ -84,19 +86,30 @@ export function patchRoom(doc: Doc, floor: number, roomId: string, patch: RoomPa
   }));
 }
 
+/**
+ * After one room changed shape, its doors/windows follow the walls that moved (openingOps.reconcileOpenings).
+ * Every operation that changes the cells of one room on purpose ends here: expand, shrink and set-shape.
+ */
+function followShape(before: FloorData, after: FloorData, roomId: string): FloorData {
+  const openings = reconcileOpenings(before, after, roomId);
+  return openings === after.openings ? after : { ...after, openings };
+}
+
 export function expandRoom(doc: Doc, floor: number, roomId: string, cells: CellKey[]): Doc {
-  return mapFloor(doc, floor, (f) => assignCells(f, roomId, cells));
+  return mapFloor(doc, floor, (f) => followShape(f, assignCells(f, roomId, cells), roomId));
 }
 
 export function shrinkRoom(doc: Doc, floor: number, roomId: string, cells: CellKey[]): Doc {
   const rm = new Set(cells);
   return mapFloor(doc, floor, (f) =>
-    normalize({
-      ...f,
-      rooms: f.rooms.map((r) =>
-        r.id === roomId ? { ...r, cells: r.cells.filter((c) => !rm.has(c)) } : r,
-      ),
-    }),
+    followShape(
+      f,
+      normalize({
+        ...f,
+        rooms: f.rooms.map((r) => (r.id === roomId ? { ...r, cells: r.cells.filter((c) => !rm.has(c)) } : r)),
+      }),
+      roomId,
+    ),
   );
 }
 
@@ -173,8 +186,9 @@ export function translateRoom(doc: Doc, floor: number, roomId: string, dx: numbe
 
 /**
  * Resolve overlapping cells: each contested cell is kept only by the highest-z
- * room. Lower rooms lose those cells and may split. Returns the same doc when
- * there is nothing to resolve.
+ * room. Lower rooms lose those cells and may split. Doors/windows that no room is on a wall of any
+ * more (left behind by moves, or on cells that were lost) are dropped (openingOps.pruneOrphans).
+ * Returns the same doc when there is nothing to resolve.
  */
 export function resolveOverlaps(doc: Doc, floor: number): Doc {
   const f = doc.floors[floor];
@@ -190,9 +204,9 @@ export function resolveOverlaps(doc: Doc, floor: number): Doc {
     keep.set(r.id, mine);
     kept += mine.length;
   }
-  if (kept === total) return doc; // no overlaps -> no change
-  const rooms = f.rooms.map((r) => ({ ...r, cells: keep.get(r.id)! }));
-  return mapFloor(doc, floor, () => normalize({ ...f, rooms }));
+  const settled = kept === total ? f : normalize({ ...f, rooms: f.rooms.map((r) => ({ ...r, cells: keep.get(r.id)! })) });
+  const pruned = pruneOrphans(settled);
+  return pruned === f ? doc : mapFloor(doc, floor, () => pruned); // nothing to resolve or prune -> no change
 }
 
 /** Replace a room's cells exactly (used by corner/edge drag). Steals cells from others. */
@@ -201,14 +215,18 @@ export function setRoomShape(doc: Doc, floor: number, roomId: string, cells: Cel
   if (uniq.length === 0) return doc;
   const cset = new Set(uniq);
   return mapFloor(doc, floor, (f) =>
-    normalize({
-      ...f,
-      rooms: f.rooms.map((r) => {
-        if (r.id === roomId) return { ...r, cells: uniq };
-        if (r.cells.some((c) => cset.has(c))) return { ...r, cells: r.cells.filter((c) => !cset.has(c)) };
-        return r;
+    followShape(
+      f,
+      normalize({
+        ...f,
+        rooms: f.rooms.map((r) => {
+          if (r.id === roomId) return { ...r, cells: uniq };
+          if (r.cells.some((c) => cset.has(c))) return { ...r, cells: r.cells.filter((c) => !cset.has(c)) };
+          return r;
+        }),
       }),
-    }),
+      roomId,
+    ),
   );
 }
 
