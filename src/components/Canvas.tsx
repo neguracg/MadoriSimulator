@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BASE_CELL_PX, DOOR_COLOR, GRID_H, GRID_W, WINDOW_COLOR, cellsToM2, m2ToJou } from '../constants';
 import { cellKey, parseCell, type CellAction, type CellKey, type FloorData, type Furniture, type Mode, type Opening, type RoomType, type Side } from '../types';
-import { applyRunDrag, bbox, boundaryRuns, boundarySegments, cellOwnerMap, edgeSegment, unionBoundary, type Run } from '../utils/geometry';
+import { applyRunDrag, bbox, boundaryRuns, boundarySegments, cellOwnerMap, clampRoomDelta, edgeSegment, unionBoundary, type Run } from '../utils/geometry';
 import { useLiveValue } from '../hooks/useLiveValue';
 import { linkedToRoomMove } from '../state/docOps';
 
@@ -163,6 +163,12 @@ export default function Canvas(props: Props) {
     return { cx: Math.floor(px), cy: Math.floor(py), px, py };
   };
 
+  // The shift a room-move drag has now: the pointer offset held to the grid as a whole (what translateRoom will apply on drop).
+  const moveDelta = (m: { roomId: string; start: Pt; cur: Pt }) => {
+    const room = floorData.rooms.find((r) => r.id === m.roomId);
+    return room ? clampRoomDelta(room.cells, m.cur.x - m.start.x, m.cur.y - m.start.y) : { dx: 0, dy: 0 };
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0 || handleDrag) return;
     // placing a door/window: click confirms position on the nearest wall
@@ -242,8 +248,7 @@ export default function Canvas(props: Props) {
       else if (rubber.purpose === 'shrink' && selectedRoomId) props.onShrink(cells);
       setRubber(null);
     } else if (moveDrag) {
-      const dx = moveDrag.cur.x - moveDrag.start.x;
-      const dy = moveDrag.cur.y - moveDrag.start.y;
+      const { dx, dy } = moveDelta(moveDrag);
       if (dx !== 0 || dy !== 0) props.onTranslate(moveDrag.roomId, dx, dy);
       setMoveDrag(null);
     }
@@ -369,7 +374,7 @@ export default function Canvas(props: Props) {
     );
   }
 
-  const moveOffset = moveDrag ? { dx: moveDrag.cur.x - moveDrag.start.x, dy: moveDrag.cur.y - moveDrag.start.y } : null;
+  const moveOffset = moveDrag ? moveDelta(moveDrag) : null;
 
   // Openings / furniture that travel with the room being move-dragged: the preview offsets them exactly
   // as translateRoom will on drop (one shared rule, judged on the not-yet-moved floor).

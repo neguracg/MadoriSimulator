@@ -89,25 +89,29 @@ export default function App() {
   };
 
   // ---- plan tabs ----
+  // The document as it must be parked when this view stops showing it (another tab, a new tab, an import).
+  // Move mode still holds overlapping rooms that are only settled on leaving the mode, so they are settled here, and
+  // synchronously: the result of a commit() cannot be read back yet (presentRef follows the next render).
+  // Every route that leaves the document goes through here (setMode and switchFloor stay on it and commit the settling).
+  const leaveCurrentDoc = (): Doc => (mode === 'move' ? ops.resolveOverlaps(presentRef.current, floor) : presentRef.current);
+
   const switchPlan = (id: string) => {
     if (id === activePlanId) return;
-    if (mode === 'move') commit((d) => ops.resolveOverlaps(d, floor));
-    const saved = presentRef.current;
-    setPlans((ps) => ps.map((p) => (p.id === activePlanId ? { ...p, doc: saved } : p)));
     const target = plans.find((p) => p.id === id);
-    if (target) {
-      reset(target.doc);
-      setActivePlanId(id);
-      setFloor(1);
-      setModeState('edit');
-      resetUi();
-    }
+    if (!target) return;
+    const saved = leaveCurrentDoc();
+    setPlans((ps) => ps.map((p) => (p.id === activePlanId ? { ...p, doc: saved } : p)));
+    reset(target.doc);
+    setActivePlanId(id);
+    setFloor(1);
+    setModeState('edit');
+    resetUi();
   };
   // Every route that adds plans (new tab, shared link, imported file) comes through here:
   // park the current document in its own tab, then open the first added plan.
   const appendPlans = (added: Plan[]) => {
     if (added.length === 0) return;
-    const saved = presentRef.current;
+    const saved = leaveCurrentDoc();
     setPlans((ps) => ps.map((p) => (p.id === activePlanId ? { ...p, doc: saved } : p)).concat(added));
     reset(added[0].doc);
     setActivePlanId(added[0].id);
@@ -210,6 +214,7 @@ export default function App() {
           setSelectedFurnitureId(null);
           setSelectedOpeningId(null);
           setSelectedRoomId(id);
+          setMode('move'); // it may sit on other rooms: move it away; overlaps are settled when going back to edit
         }
       }
     };

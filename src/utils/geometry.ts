@@ -1,6 +1,10 @@
 import { cellKey, parseCell, type CellKey, type Room, type Side } from '../types';
+import { GRID_H, GRID_W } from '../constants';
 
 export type Segment = [number, number, number, number]; // x1,y1,x2,y2 in cell units
+
+/** True when (x,y) is a cell of the grid. */
+export const inGrid = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < GRID_W && y < GRID_H;
 
 /**
  * Boundary edges of a cell set: an edge is on the boundary when the neighbouring
@@ -49,6 +53,23 @@ export function bbox(cells: Iterable<CellKey>) {
   }
   if (count === 0) return null;
   return { minX, minY, maxX, maxY, w: maxX - minX + 1, h: maxY - minY + 1 };
+}
+
+/**
+ * The shift a room really gets when it is asked to move by (dx,dy): the same shift, cut back per axis until the
+ * bounding box of its cells is still on the grid. A room moves as a whole. Clamping each cell on its own flattens
+ * the shape against the edge, so a drag preview, a move and a paste all use this one function.
+ * Cells without a bounding box (none) are not limited.
+ */
+export function clampRoomDelta(cells: Iterable<CellKey>, dx: number, dy: number): { dx: number; dy: number } {
+  const b = bbox(cells);
+  if (!b) return { dx, dy };
+  const clamp = (d: number, lo: number, hi: number) => (d < lo ? lo : d > hi ? hi : d);
+  // 0 - n (not -n) so a room at the edge gives +0, never -0
+  return {
+    dx: clamp(dx, 0 - b.minX, GRID_W - 1 - b.maxX),
+    dy: clamp(dy, 0 - b.minY, GRID_H - 1 - b.maxY),
+  };
 }
 
 /** Split a cell set into 4-connected components. */
@@ -147,7 +168,10 @@ export function applyRunDrag(cells: Iterable<CellKey>, run: Run, k: number): Cel
   const span: number[] = [];
   for (let i = run.from; i < run.to; i++) span.push(i);
 
-  const add = (x: number, y: number) => set.add(cellKey(x, y));
+  // a drag past the edge of the grid stops at the edge (cells outside it are not part of any room)
+  const add = (x: number, y: number) => {
+    if (inGrid(x, y)) set.add(cellKey(x, y));
+  };
   const del = (x: number, y: number) => set.delete(cellKey(x, y));
 
   for (const p of span) {

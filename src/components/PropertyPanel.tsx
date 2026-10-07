@@ -1,12 +1,12 @@
 import { cellsToM2, m2ToJou, m2ToTsubo } from '../constants';
-import type { CellAction, Room, RoomType } from '../types';
+import type { CellAction, Room, RoomPatch, RoomType } from '../types';
 
 interface Props {
   room: Room | null;
   roomTypes: RoomType[];
   cellMm: number;
   cellAction: CellAction;
-  onPatch: (patch: Partial<Room>) => void;
+  onPatch: (patch: RoomPatch) => void;
   onAddType: (name: string) => string;
   onDelete: () => void;
   onSetCellAction: (a: CellAction) => void;

@@ -1,27 +1,35 @@
 import {
   cellKey,
+  parseCell,
   type CellKey,
   type Doc,
   type FloorData,
   type Furniture,
   type Opening,
   type Room,
+  type RoomPatch,
   type RoomType,
   type Settings,
   type Side,
 } from '../types';
-import { cellOwnerMap, connectedComponents, neighborCell } from '../utils/geometry';
+import { cellOwnerMap, clampRoomDelta, connectedComponents, inGrid, neighborCell } from '../utils/geometry';
 import { GRID_H, GRID_W, nextAutoColor, uid } from '../constants';
 
 function mapFloor(doc: Doc, floor: number, fn: (f: FloorData) => FloorData): Doc {
   return { ...doc, floors: { ...doc.floors, [floor]: fn(doc.floors[floor]) } };
 }
 
-/** Split disconnected rooms, drop empty ones. Idempotent for connected rooms. */
+const onGrid = (c: CellKey): boolean => inGrid(...parseCell(c));
+
+/**
+ * Split disconnected rooms, drop empty ones, and drop cells outside the grid (they exist nowhere: they are not
+ * drawn and are not read back from storage). Every shape operation ends here, so no caller can leave the grid.
+ * Idempotent for connected rooms.
+ */
 function normalize(f: FloorData): FloorData {
   const rooms: Room[] = [];
   for (const r of f.rooms) {
-    const comps = connectedComponents(r.cells);
+    const comps = connectedComponents(r.cells.filter(onGrid));
     if (comps.length === 0) continue;
     if (comps.length === 1) {
       rooms.push({ ...r, cells: comps[0] });
@@ -69,7 +77,7 @@ export function deleteRoom(doc: Doc, floor: number, roomId: string): Doc {
   return mapFloor(doc, floor, (f) => ({ ...f, rooms: f.rooms.filter((r) => r.id !== roomId) }));
 }
 
-export function patchRoom(doc: Doc, floor: number, roomId: string, patch: Partial<Room>): Doc {
+export function patchRoom(doc: Doc, floor: number, roomId: string, patch: RoomPatch): Doc {
   return mapFloor(doc, floor, (f) => ({
     ...f,
     rooms: f.rooms.map((r) => (r.id === roomId ? { ...r, ...patch } : r)),
@@ -127,40 +135,36 @@ export function linkedToRoomMove(
 }
 
 /**
- * Move a room by (dx,dy). Overlaps with other rooms are ALLOWED and preserved —
- * they are only resolved later by resolveOverlaps (when leaving move mode).
- * The moved room is brought to the front so it wins on resolution.
+ * Move a room by (dx,dy), held to the grid as a whole (clampRoomDelta: the shift is cut back, the shape is kept).
+ * Overlaps with other rooms are ALLOWED and preserved — they are only resolved later by resolveOverlaps
+ * (when leaving move mode). The moved room is brought to the front so it wins on resolution.
  *
- * The openings and furniture listed by linkedToRoomMove move along with it.
+ * The openings and furniture listed by linkedToRoomMove move along with it by the SAME shift. They are not
+ * clamped on their own: that would pull them off the wall / out of the room they belong to.
+ * A move that cannot go anywhere (the shift is cut back to 0) changes nothing.
  */
 export function translateRoom(doc: Doc, floor: number, roomId: string, dx: number, dy: number): Doc {
   return mapFloor(doc, floor, (f) => {
     const room = f.rooms.find((r) => r.id === roomId);
     if (!room) return f;
+    const shift = clampRoomDelta(room.cells, dx, dy);
+    if (shift.dx === 0 && shift.dy === 0) return f;
     const maxZ = Math.max(0, ...f.rooms.map((r) => r.z));
     const cellMm = doc.settings.cellMm;
     const { openingIds, furnitureIds } = linkedToRoomMove(f, roomId, cellMm); // judged before the move
-    const clampX = (x: number) => Math.min(GRID_W - 1, Math.max(0, x));
-    const clampY = (y: number) => Math.min(GRID_H - 1, Math.max(0, y));
 
-    const moved = [
-      ...new Set(
-        room.cells.map((c) => {
-          const [x, y] = c.split(',').map(Number);
-          return cellKey(clampX(x + dx), clampY(y + dy));
-        }),
-      ),
-    ];
+    const moved = room.cells.map((c) => {
+      const [x, y] = parseCell(c);
+      return cellKey(x + shift.dx, y + shift.dy);
+    });
     const rooms = f.rooms.map((r) => (r.id === roomId ? { ...r, z: maxZ + 1, cells: moved } : r));
 
     const openings = f.openings.map((o) =>
-      openingIds.has(o.id) ? { ...o, cx: clampX(o.cx + dx), cy: clampY(o.cy + dy) } : o,
+      openingIds.has(o.id) ? { ...o, cx: o.cx + shift.dx, cy: o.cy + shift.dy } : o,
     );
 
     const furniture = (f.furniture ?? []).map((item) =>
-      furnitureIds.has(item.id)
-        ? { ...item, x: Math.max(0, item.x + dx * cellMm), y: Math.max(0, item.y + dy * cellMm) }
-        : item,
+      furnitureIds.has(item.id) ? { ...item, x: item.x + shift.dx * cellMm, y: item.y + shift.dy * cellMm } : item,
     );
 
     return { ...f, rooms, openings, furniture };
@@ -267,7 +271,10 @@ export function removeFurniture(doc: Doc, floor: number, id: string): Doc {
   return mapFloor(doc, floor, (f) => ({ ...f, furniture: (f.furniture ?? []).filter((x) => x.id !== id) }));
 }
 
-/** Paste a copied room onto a floor with a new id (optionally offset by whole cells). */
+/**
+ * Paste a copied room onto a floor with a new id, offset by whole cells. The offset is cut back
+ * (clampRoomDelta) so the pasted room keeps its shape and stays on the grid.
+ */
 export function pasteRoom(
   doc: Doc,
   floor: number,
@@ -282,17 +289,19 @@ export function pasteRoom(
     d = { ...d, roomTypes: [...d.roomTypes, type] };
   }
   const z = Math.max(0, ...d.floors[floor].rooms.map((r) => r.z)) + 1;
+  const { dx, dy } = clampRoomDelta(room.cells, dcx, dcy);
   const cells = room.cells.map((c) => {
-    const [x, y] = c.split(',').map(Number);
-    return cellKey(x + dcx, y + dcy);
+    const [x, y] = parseCell(c);
+    return cellKey(x + dx, y + dy);
   });
   const nr: Room = { ...room, id, cells, z };
   return mapFloor(d, floor, (f) => ({ ...f, rooms: [...f.rooms, nr] }));
 }
 
-/** Paste a copied furniture onto a floor with a new id (optionally offset in mm). */
+/** Paste a copied furniture onto a floor with a new id, offset in mm and kept inside the grid (top-left at 0 when it is larger than the grid). */
 export function pasteFurniture(doc: Doc, floor: number, item: Furniture, id: string, dx: number, dy: number): Doc {
-  const nf: Furniture = { ...item, id, x: item.x + dx, y: item.y + dy };
+  const inside = (v: number, size: number, cells: number) => Math.max(0, Math.min(v, cells * doc.settings.cellMm - size));
+  const nf: Furniture = { ...item, id, x: inside(item.x + dx, item.w, GRID_W), y: inside(item.y + dy, item.h, GRID_H) };
   return mapFloor(doc, floor, (f) => ({ ...f, furniture: [...(f.furniture ?? []), nf] }));
 }
 

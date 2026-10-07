@@ -19,6 +19,9 @@ export interface Room {
   colorOverride?: string;
 }
 
+/** The fields of a room that a panel edits one by one. Its cells and layer go through shape / reorder operations, never a patch. */
+export type RoomPatch = Partial<Pick<Room, 'name' | 'typeId' | 'colorOverride'>>;
+
 export interface Opening {
   id: string;
   kind: 'door' | 'window';

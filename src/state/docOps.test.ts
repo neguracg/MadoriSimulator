@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { defaultDoc } from '../constants';
-import type { Doc, FloorData } from '../types';
-import { linkedToRoomMove, translateRoom } from './docOps';
+import { GRID_H, GRID_W, defaultDoc } from '../constants';
+import type { Doc, FloorData, Furniture, Room } from '../types';
+import { linkedToRoomMove, pasteFurniture, pasteRoom, translateRoom } from './docOps';
 
 const CELL = 455;
 
@@ -109,5 +109,144 @@ describe('translateRoom (linkedToRoomMove を使う)', () => {
     doc.settings = { cellMm: 500, wallMm: 120 };
     doc.floors[1].furniture = [{ id: 'f-in', name: 'in', x: 1000, y: 1000, w: 100, h: 100, color: '#888888' }]; // centre cell (2,2) at 500mm
     expect(translateRoom(doc, 1, 'A', 2, 0).floors[1].furniture[0]).toMatchObject({ x: 2000, y: 1000 });
+  });
+});
+
+// ---- B3: a move is held to the grid as a whole ----------------------------------------------------------------
+
+/** Cell keys of the rectangle x0..x1 × y0..y1 (inclusive). */
+function rect(x0: number, y0: number, x1: number, y1: number): string[] {
+  const out: string[] = [];
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) out.push(`${x},${y}`);
+  return out;
+}
+const sorted = (xs: string[]) => [...xs].sort();
+const room = (id: string, cells: string[], z = 1): Room => ({ id, name: id, typeId: 'living', cells, z });
+const solo = (cells: string[], extra: Partial<FloorData> = {}): Doc =>
+  docWith({ rooms: [room('A', cells)], openings: [], furniture: [], ...extra });
+const cellsOf = (doc: Doc, id = 'A') => sorted(doc.floors[1].rooms.find((r) => r.id === id)!.cells);
+
+describe('translateRoom: 端の外へ動かしても形を保つ（B3）', () => {
+  it('4x3 の部屋を左へ3マス頼むと、入る分(1マス)だけ動いて12マスのまま', () => {
+    const out = translateRoom(solo(rect(1, 1, 4, 3)), 1, 'A', -3, 0);
+    expect(cellsOf(out)).toEqual(sorted(rect(0, 1, 3, 3)));
+  });
+
+  it('右下の端でも同じ。軸ごとに切り詰める（x は入る分、y は端まで）', () => {
+    const out = translateRoom(solo(rect(60, 10, 62, 12)), 1, 'A', 100, 100);
+    expect(cellsOf(out)).toEqual(sorted(rect(61, 61, 63, 63)));
+  });
+
+  it('片方の軸だけが端に当たっても、もう一方は頼んだ量のまま動く', () => {
+    const out = translateRoom(solo(rect(5, 0, 6, 1)), 1, 'A', -3, -2);
+    expect(cellsOf(out)).toEqual(sorted(rect(2, 0, 3, 1)));
+  });
+
+  it('動けない（切り詰めて 0）なら何も変えない。最前面にもしない', () => {
+    const before = solo(rect(0, 0, 3, 3));
+    const out = translateRoom(before, 1, 'A', -5, -5);
+    expect(out.floors[1]).toBe(before.floors[1]);
+  });
+
+  it('ドア/窓と家具は、部屋と同じ（切り詰めた後の）移動量で動く。それぞれの個別クランプはしない', () => {
+    const before = solo(rect(1, 1, 4, 3), {
+      openings: [
+        { id: 'top', kind: 'door', cx: 2, cy: 1, side: 'N', size: 800 },
+        { id: 'right', kind: 'window', cx: 4, cy: 2, side: 'E', size: 900 },
+      ],
+      furniture: [{ id: 'f', name: 'f', x: 2 * CELL + 50, y: 2 * CELL, w: 400, h: 400, color: '#888888' }],
+    });
+    const out = translateRoom(before, 1, 'A', -3, 0).floors[1];
+    expect(out.rooms[0].cells.length).toBe(12);
+    expect(out.openings[0]).toMatchObject({ cx: 1, cy: 1, side: 'N' }); // moved by -1, not clamped to 0
+    expect(out.openings[1]).toMatchObject({ cx: 3, cy: 2, side: 'E' });
+    expect(out.furniture[0]).toMatchObject({ x: 2 * CELL + 50 - CELL, y: 2 * CELL });
+  });
+
+  it('外側のマスを持ち主にしたドア（隣が部屋）も、部屋の壁から離れない', () => {
+    // the door is stored on the empty cell (63,5), side W: it is the east wall of the room at x 60..62
+    const before = solo(rect(60, 5, 62, 6), { openings: [{ id: 'o', kind: 'door', cx: 63, cy: 5, side: 'W', size: 800 }] });
+    expect(linkedToRoomMove(before.floors[1], 'A', CELL).openingIds.has('o')).toBe(true);
+    const after = translateRoom(before, 1, 'A', 9, 0); // asked 9, only 1 fits
+    expect(cellsOf(after)).toEqual(sorted(rect(61, 5, 63, 6)));
+    expect(after.floors[1].openings[0]).toMatchObject({ cx: 64, cy: 5, side: 'W' }); // still the east wall (a per-door clamp gave cx 63)
+    expect(linkedToRoomMove(after.floors[1], 'A', CELL).openingIds.has('o')).toBe(true);
+  });
+
+  it('部屋からはみ出した家具も部屋と一緒に動く（0 で止めて相対位置をずらさない）', () => {
+    const before = solo(rect(1, 1, 2, 1), {
+      furniture: [{ id: 'f', name: 'f', x: 300, y: CELL, w: 400, h: 200, color: '#888888' }], // centre cell (1,1): sticks out of the room on the left
+    });
+    const out = translateRoom(before, 1, 'A', -5, 0).floors[1];
+    expect(out.rooms[0].cells).toEqual(['0,1', '1,1']);
+    expect(out.furniture[0].x).toBe(300 - CELL);
+  });
+});
+
+describe('pasteRoom: グリッドの内側へ、形を保ってずらす（B12）', () => {
+  const src = (cells: string[]): Room => room('src', cells, 3);
+  const paste = (cells: string[], dcx: number, dcy: number) =>
+    pasteRoom(solo(['0,0']), 1, src(cells), null, 'new', dcx, dcy).floors[1].rooms.find((r) => r.id === 'new')!;
+
+  it('収まる時は頼んだ量のままずらす', () => {
+    expect(sorted(paste(rect(2, 2, 4, 3), 1, 1).cells)).toEqual(sorted(rect(3, 3, 5, 4)));
+  });
+
+  it('右下の端では入る分だけずらす（形は同じ・範囲外のマスは作らない）', () => {
+    const p = paste(rect(61, 60, 63, 62), 1, 1);
+    expect(sorted(p.cells)).toEqual(sorted(rect(61, 61, 63, 63)));
+  });
+
+  it('角でずらす余地が無ければ、そのままの位置（元の部屋の上）に貼る。新しい id・最前面', () => {
+    const out = pasteRoom(solo(['0,0']), 1, src(rect(62, 62, 63, 63)), null, 'new', 1, 1).floors[1];
+    const p = out.rooms.find((r) => r.id === 'new')!;
+    expect(sorted(p.cells)).toEqual(sorted(rect(62, 62, 63, 63)));
+    expect(p.z).toBe(Math.max(...out.rooms.map((r) => r.z)));
+  });
+
+  it('端の近くのどんな位置・向きでも、貼った部屋は全マスがグリッド内で、元と同じ形（同じ相対位置）', () => {
+    for (const [x0, y0] of [[0, 0], [62, 0], [0, 62], [60, 60], [63, 63], [31, 62]]) {
+      for (const [dx, dy] of [[1, 1], [0, 0], [3, 2], [-1, 0]]) {
+        const cells = rect(x0, y0, Math.min(x0 + 2, GRID_W - 1), Math.min(y0 + 1, GRID_H - 1));
+        const p = paste(cells, dx, dy).cells.map((c) => c.split(',').map(Number));
+        expect(p.every(([x, y]) => x >= 0 && y >= 0 && x < GRID_W && y < GRID_H)).toBe(true);
+        const o = cells.map((c) => c.split(',').map(Number));
+        const shift = [p[0][0] - o[0][0], p[0][1] - o[0][1]];
+        expect(p.every(([x, y], i) => x - o[i][0] === shift[0] && y - o[i][1] === shift[1])).toBe(true);
+      }
+    }
+  });
+
+  it('未知の種別は貼り付け先に足す（従来どおり）', () => {
+    const type = { id: 'extra', name: '追加', color: '#123456' };
+    const out = pasteRoom(solo(['0,0']), 1, src(['5,5']), type, 'new', 0, 0);
+    expect(out.roomTypes.some((t) => t.id === 'extra')).toBe(true);
+  });
+});
+
+describe('pasteFurniture: グリッド内に収める（B12）', () => {
+  const item = (x: number, y: number, w = 400, h = 300): Furniture => ({ id: 's', name: 's', x, y, w, h, color: '#888888' });
+  const paste = (it: Furniture, dx: number, dy: number, cellMm = CELL) => {
+    const doc = solo(['0,0']);
+    doc.settings = { cellMm, wallMm: 120 };
+    return pasteFurniture(doc, 1, it, 'new', dx, dy).floors[1].furniture.find((f) => f.id === 'new')!;
+  };
+
+  it('収まる時は頼んだ量のままずらす', () => {
+    expect(paste(item(1000, 2000), CELL, CELL)).toMatchObject({ x: 1000 + CELL, y: 2000 + CELL, w: 400, h: 300 });
+  });
+
+  it('右端・下端では、はみ出さない位置（端 - 大きさ）に止める', () => {
+    const p = paste(item(GRID_W * CELL - 400, GRID_H * CELL - 300), CELL, CELL);
+    expect(p).toMatchObject({ x: GRID_W * CELL - 400, y: GRID_H * CELL - 300 });
+  });
+
+  it('負の位置は 0 に。グリッドより大きい家具は左上を 0 に置く', () => {
+    expect(paste(item(-200, -50), 0, 0)).toMatchObject({ x: 0, y: 0 });
+    expect(paste(item(0, 0, 100000, 100000), 0, 0)).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it('マスの大きさ(settings.cellMm)に合わせた端で止める', () => {
+    expect(paste(item(3000, 0), 5000, 0, 100).x).toBe(GRID_W * 100 - 400);
   });
 });
