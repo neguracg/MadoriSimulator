@@ -147,7 +147,7 @@ def sc_print_layout(env):
     check(not ui.page.locator(".app-header").is_visible(), "印刷なのにヘッダーが見えている")
     check(ui.page.locator(".print-page").count() == 2, "部屋がある階（1階・2階）ごとに1ページのはず")
     heads = [t.strip() for t in ui.page.locator(".print-page h1").all_text_contents()]
-    check(heads == ["間取り 1 1階", "間取り 1 2階"], f"見出し: {heads}")
+    check(heads == ["間取り 1 ― 1階", "間取り 1 ― 2階"], f"見出し: {heads}")  # "<間取り名> ― <n>階" (PrintSheet.tsx)
     rows = [[c.strip() for c in tr.locator("td").all_text_contents()] for tr in ui.page.locator(".print-page").nth(0).locator("tbody tr").all()]
     check(rows == [["LDK", "LDK", "6.21", "3.8"], ["寝室", "居室", "4.14", "2.6"]], f"1階の部屋一覧: {rows}")
     total = " ".join((ui.page.locator(".print-total").nth(0).text_content() or "").split())
@@ -160,7 +160,7 @@ def sc_print_layout(env):
     pdf = ui.page.pdf(format="A4", print_background=False, prefer_css_page_size=True)
     texts, pngs = pdf_pages(pdf)
     check(len(texts) == 2, f"PDF は2ページ（階ごとに1ページ）のはず: {len(texts)} ページ")
-    check("間取り 1 1階" in texts[0] and "LDK" in texts[0] and "子供部屋" in texts[1], "PDF の各ページの中身が違う")
+    check("間取り 1 ― 1階" in texts[0] and "LDK" in texts[0] and "子供部屋" in texts[1], "PDF の各ページの中身が違う")
     check("設定" not in "".join(texts) and "ファイル" not in "".join(texts), "PDF に画面のボタンが出ている")
     for i, png in enumerate(pngs):
         (SHOTS / f"print_pdf_page{i + 1}.png").write_bytes(png)
