@@ -60,7 +60,7 @@ function FloorPage({ planName, floor, doc }: { planName: string; floor: number; 
   return (
     <section className="print-page">
       <h1>
-        {planName} {floor}階
+        {planName} ― {floor}階
       </h1>
       <p className="print-note">
         1マス = {cellMm}mm ／ 壁厚 {wallMm}mm
