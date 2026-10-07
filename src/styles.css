@@ -40,6 +40,7 @@ body {
 .zoom { display: flex; align-items: center; gap: 6px; background: #f0f2f4; border-radius: 8px; padding: 2px 6px; }
 .zoom button { border: none; background: #fff; width: 24px; height: 24px; border-radius: 6px; cursor: pointer; }
 .zoom span { width: 42px; text-align: center; }
+.zoom .zoom-fit { width: auto; padding: 0 8px; font-weight: 600; }
 
 /* plan tabs */
 .plan-tabs { display: flex; align-items: stretch; gap: 4px; padding: 6px 12px 0; background: var(--panel); border-bottom: 1px solid var(--line); overflow-x: auto; }

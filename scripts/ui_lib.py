@@ -216,6 +216,23 @@ class Ui:
         """Give React and the autosave effect time to act, for checks that something did NOT happen."""
         self.page.wait_for_timeout(ms)
 
+    def zoom_pct(self):
+        """The zoom shown in the header (100 at the start)."""
+        return int((self.page.locator(".zoom span").text_content() or "0").strip().rstrip("%"))
+
+    def center_box(self):
+        """Bounding box (page pixels) of the scrolled area that holds the canvas."""
+        return self.page.locator(".center").bounding_box()
+
+    def scroll_pos(self):
+        return self.page.evaluate("() => { const c = document.querySelector('.center'); return [c.scrollLeft, c.scrollTop]; }")
+
+    def room_px_box(self, x0, y0, x1, y1):
+        """Page-pixel box of the cells x0..x1 / y0..y1 (inclusive) at the zoom that is on screen now."""
+        ox, oy = self.origin()
+        cell = CELL * self.zoom_pct() / 100
+        return ox + x0 * cell, oy + y0 * cell, ox + (x1 + 1) * cell, oy + (y1 + 1) * cell
+
     def scroll_canvas_to_end(self):
         self.page.evaluate("() => { const c = document.querySelector('.center'); c.scrollLeft = c.scrollWidth; c.scrollTop = c.scrollHeight; }")
 

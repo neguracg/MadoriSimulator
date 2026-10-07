@@ -11,6 +11,7 @@ import OpeningDialog from './components/OpeningDialog';
 import FurniturePanel from './components/FurniturePanel';
 import FileMenu from './components/FileMenu';
 import { useAutosave } from './hooks/useAutosave';
+import { useFitView } from './hooks/useFitView';
 import { useNotice } from './hooks/useNotice';
 import { useStorageSync } from './hooks/useStorageSync';
 import { cellsToM2, DEFAULT_FURNITURE_COLOR, FLOORS, m2ToJou, m2ToTsubo, OPENING_MM_RANGE, uid } from './constants';
@@ -32,6 +33,7 @@ import {
   type Plan,
 } from './state/projectStore';
 import { buildShareUrl, clearShareHash, isLocalPage, readSharedFromHash } from './utils/share';
+import { ZOOM_MAX, ZOOM_MIN } from './utils/viewFit';
 
 /** The open context menu or dropdown. A file menu hangs under its button (x = the side it is anchored to). */
 type MenuState =
@@ -57,6 +59,7 @@ export default function App() {
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [pendingCells, setPendingCells] = useState<CellKey[]>([]);
   const [zoom, setZoom] = useState(1);
+  const centerRef = useRef<HTMLElement>(null); // the scrolled area that holds the canvas
   const [dialogOpen, setDialogOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -78,6 +81,8 @@ export default function App() {
   const selectedRoom: Room | null = floorData.rooms.find((r) => r.id === selectedRoomId) ?? null;
   const selectedFurniture: Furniture | null = furnitureList.find((f) => f.id === selectedFurnitureId) ?? null;
   const activePlanName = plans.find((p) => p.id === activePlanId)?.name ?? '間取り';
+
+  const fitAll = useFitView(centerRef, floorData, doc.settings.cellMm, zoom, setZoom);
 
   // outer-wall cells of the OTHER floor, shown as a ghost for alignment
   const ghostWallCells: CellKey[] = (() => {
@@ -339,9 +344,12 @@ export default function App() {
         </div>
         <div className="header-right">
           <div className="zoom">
-            <button onClick={() => setZoom((z) => Math.max(0.4, +(z - 0.2).toFixed(2)))}>－</button>
+            <button onClick={() => setZoom((z) => Math.max(ZOOM_MIN, +(z - 0.2).toFixed(2)))}>－</button>
             <span>{Math.round(zoom * 100)}%</span>
-            <button onClick={() => setZoom((z) => Math.min(2.5, +(z + 0.2).toFixed(2)))}>＋</button>
+            <button onClick={() => setZoom((z) => Math.min(ZOOM_MAX, +(z + 0.2).toFixed(2)))}>＋</button>
+            <button className="zoom-fit" title="内容の全体が見える大きさと位置に合わせる" onClick={fitAll}>
+              全体
+            </button>
           </div>
           <button onClick={() => setSettingsOpen(true)}>⚙ 設定</button>
           <button onClick={() => setShareOpen(true)}>🔗 共有</button>
@@ -414,7 +422,7 @@ export default function App() {
           />
         </aside>
 
-        <main className="center">
+        <main className="center" ref={centerRef}>
           <Canvas
             floorData={floorData}
             roomTypes={doc.roomTypes}
